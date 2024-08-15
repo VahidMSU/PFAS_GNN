@@ -1,0 +1,10 @@
+models
+predictions_results
+__pycache__
+figs
+temp
+predictions_results
+results 
+./temp/WELLOGIC_26_Southeastern_Michigan.geojson
+./temp/WELLOGIC_26_Southeastern_Michigan.pkl
+
