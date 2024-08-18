@@ -1,0 +1,103 @@
+INFO - stage:load_pfas_sites ==##== Loading PFAS sites
+INFO - stage:add_unconfirmed_sites ==##== Loading unconfirmed sites
+INFO - stage:add_unconfirmed_sites ==##== Number of unconfirmed sites: 161
+INFO - stage:add_confirmed_sites ==##== Loading confirmed sites
+INFO - stage:add_confirmed_sites ==##== Number of confirmed sites: 18
+INFO - common columns in all PFAS sites: ['ppt_1995_250m', 'QEMA_MILP_250m', 'kriging_stderr_AQ_THK_2_250m', 'obs_lon_250m', 'ppt_2010_250m', 'snow_layer_thickness_raster_250m', 'Glacial_Landsystems_250m', 'kriging_output_TRANSMSV_1_250m', 'QBMA_MILP_250m', 'snowpack_sublimation_rate_raster_250m', 'kriging_stderr_H_COND_2_250m', 'ppt_1994_250m', 'ppt_2012_250m', 'QGNavMA_MILP_250m', 'QIncrEMA_MILP_250m', 'ppt_2014_250m', 'VCMA_MILP_250m', 'kriging_output_H_COND_1_250m', 'landuse_250m', 'recharge_2014_250m', 'non_snow_accumulation_raster_250m', 'obs_H_COND_2_250m', 'ppt_1991_250m', 'kriging_output_AQ_THK_2_250m', 'Longitude', 'GageIDMA_MILP_250m', 'recharge_2019_250m', 'obs_V_COND_2_250m', 'HUC12_250m', 'y_250m', 'kriging_output_SWL_250m', 'geomorphons_250m_250Dis', 'ppt_2002_250m', 'VBMA_MILP_250m', 'average_temperature_raster_250m', 'LC20_SlpP_220_250m', 'ppt_1997_250m', 'ppt_2011_250m', 'ppt_2007_250m', 'COUNTY_250m', 'LC22_EVC_220_250m', 'ppt_2018_250m', 'VDMA_MILP_250m', 'Industry', 'QIncrBMA_MILP_250m', 'snow_water_equivalent_raster_250m', 'LC20_SlpD_220_250m', 'Latitude', 'QIncrFMA_MILP_250m', 'kriging_output_TRANSMSV_2_250m', 'obs_lat_250m', 'ppt_2019_250m', 'obs_AQ_THK_2_250m', 'pden2000_ML_250m', 'lat_250m', 'recharge_2017_250m', 'Aquifer_Characteristics_Of_Glacial_Drift_250m', 'recharge_2013_250m', 'recharge_2012_250m', 'QCMA_MILP_250m', 'kriging_stderr_H_COND_1_250m', 'recharge_2009_250m', 'ppt_2004_250m', 'AvgQAdjMA_MILP_250m', 'obs_H_COND_1_250m', 'melt_rate_raster_250m', 'ppt_2022_250m', 'LC20_Asp_220_250m', 'obs_TRANSMSV_1_250m', 'Soil_STATSGO_250m', 'ppt_2017_250m', 'obs_SWL_250m', 'recharge_2011_250m', 'QFMA_MILP_250m', 'recharge_2008_250m', 'kriging_stderr_TRANSMSV_1_250m', 'kriging_stderr_AQ_THK_1_250m', 'ppt_2021_250m', 'recharge_2006_250m', 'ppt_2009_250m', 'recharge_2005_250m', 'pden2010_ML_250m', 'kriging_output_V_COND_2_250m', 'VEMA_MILP_250m', 'PETMA_MILP_250m', 'QDMA_MILP_250m', 'QGAdjMA_MILP_250m', 'recharge_2010_250m', 'QIncrDMA_MILP_250m', 'DEM_250m', 'ppt_2016_250m', 'geometry', 'GageQMA_MILP_250m', 'recharge_2004_250m', 'ppt_1999_250m', 'gSURRGO_swat_250m', 'ppt_1990_250m', 'ppt_1996_250m', 'LC20_EVT_220_250m', 'ppt_2003_250m', 'ppt_1998_250m', 'BaseRaster_250m', 'obs_TRANSMSV_2_250m', 'NHDPlusID_250m', 'ppt_1993_250m', 'kriging_output_V_COND_1_250m', 'lon_250m', 'obs_AQ_THK_1_250m', 'ppt_2006_250m', 'ppt_1992_250m', 'recharge_2018_250m', 'LC20_Elev_220_250m', 'QIncrCMA_MILP_250m', 'ppt_2008_250m', 'x_250m', 'kriging_stderr_TRANSMSV_2_250m', 'GageAdjMA_MILP_250m', 'ppt_2005_250m', 'ArQNavMA_MILP_250m', 'MI_geol_poly_250m', 'obs_V_COND_1_250m', 'LC20_BPS_220_250m', 'QLossMA_MILP_250m', 'ppt_2020_250m', 'kriging_stderr_V_COND_2_250m', 'QIncrAMA_MILP_250m', 'ppt_2013_250m', 'QAMA_MILP_250m', 'ppt_2001_250m', 'snow_accumulation_raster_250m', 'recharge_2015_250m', 'HUC8_250m', 'landforms_250m_250Dis', 'kriging_output_AQ_THK_1_250m', 'ppt_2015_250m', 'kriging_stderr_V_COND_1_250m', 'pden1990_ML_250m', 'LC22_EVH_220_250m', 'kriging_output_H_COND_2_250m', 'VAMA_MILP_250m', 'inv_status', 'recharge_2016_250m', 'ppt_2000_250m', 'recharge_2007_250m', 'kriging_stderr_SWL_250m']
+INFO - stage:load_pfas_sites ==##== Combining all sites
+INFO - stage:load_pfas_sites ==##== PFAS sites are all loaded
+INFO - stage:load_sampled_gw ==##== number of Nulls in WSSN: 0
+INFO - stage:load_sampled_gw ==##== sampled gw columns: ['SystemName', 'WSSN', 'SystemType', 'SiteCode', 'Latitude', 'Longitude', 'SysLocCode', 'PositionSource', 'PhaseCode', 'TaskCode', 'TaskType', 'TreatmentStatus', 'SysSampleCode', 'LabNameCode', 'LabNumber', 'LabSdg', 'AnalyticalMethod', 'HFPODAResult', 'HFPODAFlags', 'PFBSResult', 'PFBSFlags', 'PFHxAResult', 'PFHxAFlags', 'PFHxSResult', 'PFHxSFlags', 'PFNAResult', 'PFNAFlags', 'PFOAResult', 'PFOAFlags', 'PFOSResult', 'PFOSFlags', 'PF3OUdS11ClResult', 'PF3OUdS11ClFlags', 'PF3ONS9ClResult', 'PF3ONS9ClFlags', 'ADONAResult', 'ADONAFlags', 'FTSA42Result', 'FTSA42Flags', 'FTSA62Result', 'FTSA62Flags', 'FTSA82Result', 'FTSA82Flags', 'FOSAResult', 'FOSAFlags', 'NEtFOSAAResult', 'NEtFOSAAFlags', 'NMeFOSAAResult', 'NMeFOSAAFlags', 'PFBAResult', 'PFBAFlags', 'PFDAResult', 'PFDAFlags', 'PFDoDAResult', 'PFDoDAFlags', 'PFDSResult', 'PFDSFlags', 'PFHpAResult', 'PFHpAFlags', 'PFHpSResult', 'PFHpSFlags', 'PFNSResult', 'PFNSFlags', 'PFPeAResult', 'PFPeAFlags', 'PFPeSResult', 'PFPeSFlags', 'PFTeDAResult', 'PFTeDAFlags', 'PFTrDAResult', 'PFTrDAFlags', 'PFUnDAResult', 'PFUnDAFlags', 'geometry', 'Aquifer_Characteristics_Of_Glacial_Drift_250m', 'ArQNavMA_MILP_250m', 'AvgQAdjMA_MILP_250m', 'BaseRaster_250m', 'COUNTY_250m', 'DEM_250m', 'GageAdjMA_MILP_250m', 'GageIDMA_MILP_250m', 'GageQMA_MILP_250m', 'Glacial_Landsystems_250m', 'HUC12_250m', 'HUC8_250m', 'LC20_Asp_220_250m', 'LC20_BPS_220_250m', 'LC20_EVT_220_250m', 'LC20_Elev_220_250m', 'LC20_SlpD_220_250m', 'LC20_SlpP_220_250m', 'LC22_EVC_220_250m', 'LC22_EVH_220_250m', 'MI_geol_poly_250m', 'NHDPlusID_250m', 'PETMA_MILP_250m', 'QAMA_MILP_250m', 'QBMA_MILP_250m', 'QCMA_MILP_250m', 'QDMA_MILP_250m', 'QEMA_MILP_250m', 'QFMA_MILP_250m', 'QGAdjMA_MILP_250m', 'QGNavMA_MILP_250m', 'QIncrAMA_MILP_250m', 'QIncrBMA_MILP_250m', 'QIncrCMA_MILP_250m', 'QIncrDMA_MILP_250m', 'QIncrEMA_MILP_250m', 'QIncrFMA_MILP_250m', 'QLossMA_MILP_250m', 'Soil_STATSGO_250m', 'VAMA_MILP_250m', 'VBMA_MILP_250m', 'VCMA_MILP_250m', 'VDMA_MILP_250m', 'VEMA_MILP_250m', 'average_temperature_raster_250m', 'gSURRGO_swat_250m', 'geomorphons_250m_250Dis', 'kriging_output_AQ_THK_1_250m', 'kriging_output_AQ_THK_2_250m', 'kriging_output_H_COND_1_250m', 'kriging_output_H_COND_2_250m', 'kriging_output_SWL_250m', 'kriging_output_TRANSMSV_1_250m', 'kriging_output_TRANSMSV_2_250m', 'kriging_output_V_COND_1_250m', 'kriging_output_V_COND_2_250m', 'kriging_stderr_AQ_THK_1_250m', 'kriging_stderr_AQ_THK_2_250m', 'kriging_stderr_H_COND_1_250m', 'kriging_stderr_H_COND_2_250m', 'kriging_stderr_SWL_250m', 'kriging_stderr_TRANSMSV_1_250m', 'kriging_stderr_TRANSMSV_2_250m', 'kriging_stderr_V_COND_1_250m', 'kriging_stderr_V_COND_2_250m', 'landforms_250m_250Dis', 'landuse_250m', 'lat_250m', 'lon_250m', 'melt_rate_raster_250m', 'non_snow_accumulation_raster_250m', 'obs_AQ_THK_1_250m', 'obs_AQ_THK_2_250m', 'obs_H_COND_1_250m', 'obs_H_COND_2_250m', 'obs_SWL_250m', 'obs_TRANSMSV_1_250m', 'obs_TRANSMSV_2_250m', 'obs_V_COND_1_250m', 'obs_V_COND_2_250m', 'obs_lat_250m', 'obs_lon_250m', 'pden1990_ML_250m', 'pden2000_ML_250m', 'pden2010_ML_250m', 'ppt_1990_250m', 'ppt_1991_250m', 'ppt_1992_250m', 'ppt_1993_250m', 'ppt_1994_250m', 'ppt_1995_250m', 'ppt_1996_250m', 'ppt_1997_250m', 'ppt_1998_250m', 'ppt_1999_250m', 'ppt_2000_250m', 'ppt_2001_250m', 'ppt_2002_250m', 'ppt_2003_250m', 'ppt_2004_250m', 'ppt_2005_250m', 'ppt_2006_250m', 'ppt_2007_250m', 'ppt_2008_250m', 'ppt_2009_250m', 'ppt_2010_250m', 'ppt_2011_250m', 'ppt_2012_250m', 'ppt_2013_250m', 'ppt_2014_250m', 'ppt_2015_250m', 'ppt_2016_250m', 'ppt_2017_250m', 'ppt_2018_250m', 'ppt_2019_250m', 'ppt_2020_250m', 'ppt_2021_250m', 'ppt_2022_250m', 'recharge_2004_250m', 'recharge_2005_250m', 'recharge_2006_250m', 'recharge_2007_250m', 'recharge_2008_250m', 'recharge_2009_250m', 'recharge_2010_250m', 'recharge_2011_250m', 'recharge_2012_250m', 'recharge_2013_250m', 'recharge_2014_250m', 'recharge_2015_250m', 'recharge_2016_250m', 'recharge_2017_250m', 'recharge_2018_250m', 'recharge_2019_250m', 'snow_accumulation_raster_250m', 'snow_layer_thickness_raster_250m', 'snow_water_equivalent_raster_250m', 'snowpack_sublimation_rate_raster_250m', 'x_250m', 'y_250m']
+INFO - stage:load_sampled_gw ==##== Number of sampled gw: 1656
+INFO - stage:load_sampled_gw ==##== Range of unique WSSN ID: 303
+INFO - stage:load_sampled_gw ==##== Range of unique geometry: 371
+INFO - stage:load_sampled_gw ==##== Number of unique SiteCode: 40
+INFO - stage:average_over_time ==##== Total number of samples: 1656 with 303 unique WSSN ID
+INFO - stage:average_over_time ==##== Number of samples after averaging over time 303 with 303 unique WSSN ID
+INFO - COLUMNS	MAX	MIN	MEDIAN	NAN	ZEROS
+INFO - HFPODAResult	0.00	0.00	0.00	0.00	303.00
+INFO - PFBSResult	41.80	0.00	0.00	0.00	278.00
+INFO - PFHxAResult	52.20	0.00	0.00	0.00	273.00
+INFO - PFHxSResult	8.00	0.00	0.00	0.00	295.00
+INFO - PFNAResult	0.00	0.00	0.00	0.00	303.00
+INFO - PFOAResult	17.71	0.00	0.00	0.00	286.00
+INFO - PFOSResult	15.45	0.00	0.00	0.00	296.00
+INFO - PF3OUdS11ClResult	0.00	0.00	0.00	0.00	303.00
+INFO - PF3ONS9ClResult	0.00	0.00	0.00	0.00	303.00
+INFO - ADONAResult	0.00	0.00	0.00	0.00	303.00
+INFO - FTSA42Result	0.00	0.00	0.00	0.00	303.00
+INFO - FTSA62Result	0.00	0.00	0.00	0.00	303.00
+INFO - FTSA82Result	0.00	0.00	0.00	0.00	303.00
+INFO - FOSAResult	0.00	0.00	0.00	0.00	303.00
+INFO - NEtFOSAAResult	13.73	0.00	0.00	0.00	302.00
+INFO - NMeFOSAAResult	132.73	0.00	0.00	0.00	302.00
+INFO - PFBAResult	0.00	0.00	0.00	0.00	303.00
+INFO - PFDAResult	0.00	0.00	0.00	0.00	303.00
+INFO - PFDoDAResult	0.00	0.00	0.00	0.00	303.00
+INFO - PFDSResult	0.00	0.00	0.00	0.00	303.00
+INFO - PFHpAResult	11.43	0.00	0.00	0.00	293.00
+INFO - PFHpSResult	0.00	0.00	0.00	0.00	303.00
+INFO - PFNSResult	0.00	0.00	0.00	0.00	303.00
+INFO - PFPeAResult	0.00	0.00	0.00	0.00	303.00
+INFO - PFPeSResult	0.00	0.00	0.00	0.00	303.00
+INFO - PFTeDAResult	0.00	0.00	0.00	0.00	303.00
+INFO - PFTrDAResult	0.00	0.00	0.00	0.00	303.00
+INFO - PFUnDAResult	0.00	0.00	0.00	0.00	303.00
+INFO - sum_PFAS	165.00	0.00	0.00	0.00	253.00
+INFO - stage:create_sum_PFAS ==##== Maximum Threshold: 2000, Minimum Threshold: 0
+INFO - stage:create_sum_PFAS ==##== Number of pfas_gw: 303
+INFO - stage:create_sum_PFAS ==##== Range of sum_PFAS: 0.0 - 165.0
+INFO - stage:load_all_wssn ==##== Number of all_wssn: 2038
+INFO - stage:load_all_wssn ==##== Range of all_wssn with unique WSSN ID: 1333
+INFO - stage:load_pfas_gw ==##== Number of sampled gw: 303
+INFO - stage:load_pfas_gw ==##== Number of unsampled gw: 1333
+INFO - stage:load_pfas_gw ==##== Number of pfas_gw: 1636
+INFO - stage:load_pfas_gw ==##== Range of sum_PFAS: 0.0 - 165.0
+INFO - stage:classify_pfas_gw ==##== Number of pfas_gw classes 0 (representing 0 PFAS): 253
+INFO - stage:classify_pfas_gw ==##== Number of pfas_gw classes 1 (representing 0-10 PFAS): 41
+INFO - stage:classify_pfas_gw ==##== Number of pfas_gw classes 2 (representing 10-1000 PFAS): 9
+INFO - stage:classify_pfas_gw ==##== Number of pfas_gw classes 3 (representing not sampled wells): 1333
+INFO - stage:plot_distribution ==##== Plotting sum of PFAS distribution
+INFO - stage:split_sampled_pfas_gw ==##== Number of sampled pfas_gw: 303
+INFO - splitting method: 70% train, 20% validation, 10% test
+INFO - stage:split_sampled_pfas_gw ==##== Number of train_gw range: 0.0 - 107.80000000000001 with 177 zeros
+INFO - stage:split_sampled_pfas_gw ==##== Number of val_gw range: 0.0 - 165.0 with 50 zeros
+INFO - stage:split_sampled_pfas_gw ==##== Number of test_gw range: 0.0 - 74.0 with 26 zeros
+INFO - stage:plot_site_samples ==##== Plotting sampled sites
+INFO - stage:create_hetdata ==##== distance_threshold: 7000
+INFO - stage:create_hetdata ==##== Number of pfas_gw: 1636
+INFO - stage:create_hetdata ==##== Number of unsampled gw: 1333
+INFO - stage:calculate_distances_gpu ==##== Shape of sites_gw_dists: torch.Size([179, 1629])
+INFO - stage:calculate_distances_gpu ==##== Distances shape: torch.Size([179, 1629])
+INFO - stage:create_edges_and_distances ==##== Number of edges: 20885
+INFO - stage:create_edges_and_distances ==##== Number of distances: 20885
+INFO - stage:create_edges_and_distances ==##== Number of gw wells not connected to at least one sites 58
+INFO - Edges from 'pfas_sites' to 'gw_wells': 20885
+INFO - Edges from 'gw_wells' to 'pfas_sites': 20885
+INFO - Self-loop edges for 'pfas_sites': 179
+INFO - Self-loop edges for 'gw_wells': 1636
+INFO - stage:split_data ==##== Number of training samples: 212
+INFO - stage:split_data ==##== Number of validation samples: 60
+INFO - stage:split_data ==##== Number of test samples: 31
+INFO - stage:split_data ==##== Number of unsampled samples: 1333
+INFO - Early stopping at epoch 420
+INFO - stage:plot_loss_curve ==##== Number of epochs: 420
+INFO - Number of unsampled data: 1333 and tensor([[-0.0689],
+        [-0.0691],
+        [-0.1406],
+        ...,
+        [-0.2536],
+        [-0.2538],
+        [-0.2539]], device='cuda:0')
+INFO - ######Serial Number: 740d87562b5a491db6419a00ced1bb28######
+INFO - ######Training Loss: 0.10######
+INFO - ######Validation Loss: 0.46######
+INFO - ######Test Loss: 0.12######
+INFO - 
+     Set Target Shape  Target Range Min  ...  Pred Range Max  Pred Zero Values  Pred Small Values <0.01
+0  train     (212, 1)               0.0  ...      108.042252                 0                      148
+1    val      (60, 1)               0.0  ...      161.979324                 0                       45
+2   test      (31, 1)               0.0  ...       75.370857                 0                       20
+
+[3 rows x 11 columns]
+INFO - Train loss: 0.10, Validation loss: 0.46, Test loss: 0.12

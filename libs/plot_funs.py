@@ -50,7 +50,7 @@ def plot_sum_pfas(pfas_gw):
     assert "sum_PFAS" in pfas_gw.columns, "sum_PFAS column is missing in pfas_gw"
     ## assert no negative values in sum_PFAS
     assert pfas_gw['sum_PFAS'].min() >= 0,"There are negative values in sum_PFAS"
-
+    bounds = pd.read_pickle("/data/MyDataBase/HuronRiverPFAS/Huron_River_basin_bound.pkl").to_crs("EPSG:4326")
 
     ### verify all classes are present
     assert all(
@@ -58,21 +58,25 @@ def plot_sum_pfas(pfas_gw):
     ), "There are missing classes in sum_PFAS_class"
     colors = ['green', 'blue', 'red', 'gray']
     pfas_gw = gpd.GeoDataFrame(pfas_gw, geometry='geometry', crs='EPSG:26990').to_crs("EPSG:4326")
-    
+
     plt.figure(figsize=(8, 8))
+    bounds.boundary.plot(ax=plt.gca(), facecolor='none', edgecolor='black', linewidth=1)
     ### sort before plotting to show higher values on top
-    pfas_gw = pfas_gw.sort_values('sum_PFAS', ascending=False)
+    #pfas_gw = pfas_gw.sort_values('sum_PFAS', ascending=False)
+    ## sort in a way that we first see red, then blue, then green, then gray
+    pfas_gw = pfas_gw.sort_values('sum_PFAS_class')
     for i, (name, group) in enumerate(pfas_gw.groupby('sum_PFAS_class', observed=True)):
-        if i == 3:
-            group.plot(ax=plt.gca(), color=colors[i], edgecolor='black', linewidth=0.5, alpha=0.5, markersize=15)
+        if colors[i] == 'gray':
+            group.plot(ax=plt.gca(), color=colors[i],alpha=0.9, marker='x', markersize=5)
         else:
-            group.plot(ax=plt.gca(), color=colors[i], edgecolor='black', linewidth=0.5, alpha=0.5)
+            group.plot(ax=plt.gca(), color=colors[i],alpha=0.8)
 
     plt.xlabel('Longitude')
     plt.ylabel('Latitude')
-    plt.legend(['0', '0-10', '10-1000', 'unknown'])
-    plt.title(f'Sum of PFAS for {len(pfas_gw)} samples with range: {pfas_gw["sum_PFAS"].min():.2f} - {pfas_gw["sum_PFAS"].max():.2f}')
+    plt.legend(["Huron River Basin", '0', '0-10', f'10-{pfas_gw["sum_PFAS"].max():.1f}', 'unknown'], loc='lower left')
+    plt.title(f'#{pfas_gw["WSSN"].nunique()} water wells with unique WSSN')
     plt.grid(axis='both', linestyle='--', alpha=0.6)
+    plt.tight_layout()
     plt.savefig('figs/sum_PFAS.png', dpi=300)
     plt.close()
 
@@ -159,48 +163,3 @@ def plot_loss_curve(train_losses, val_losses, logger):
     plt.savefig('figs/loss_curve.png', dpi=300)
     plt.close()
 
-
-
-def plot_loss_histograms():
-    path = "/home/rafieiva/MyDataBase/codes/PFAS_GNN/GridSearchResults.csv"
-    df = pd.read_csv(path)
-
-    # Define a function to remove outliers using the IQR method
-    def remove_outliers(df, column):
-        Q1 = df[column].quantile(0.25)
-        Q3 = df[column].quantile(0.75)
-        IQR = Q3 - Q1
-        lower_bound = Q1 - 1.5 * IQR
-        upper_bound = Q3 + 1.5 * IQR
-        return df[(df[column] >= lower_bound) & (df[column] <= upper_bound)]
-    
-    # Remove outliers from the loss columns
-    df_no_outliers = df.copy()
-    df_no_outliers = remove_outliers(df_no_outliers, 'train_loss')
-    df_no_outliers = remove_outliers(df_no_outliers, 'val_loss')
-    df_no_outliers = remove_outliers(df_no_outliers, 'test_loss')
-
-    # Plot the histograms without outliers
-    plt.figure(figsize=(14, 6))
-
-    plt.subplot(1, 3, 1)
-    plt.hist(df_no_outliers['train_loss'], bins=30, color='skyblue')
-    plt.title('Train Loss Distribution (No Outliers)')
-    plt.xlabel('Train Loss')
-    plt.ylabel('Frequency')
-
-    plt.subplot(1, 3, 2)
-    plt.hist(df_no_outliers['val_loss'], bins=30, color='lightgreen')
-    plt.title('Validation Loss Distribution (No Outliers)')
-    plt.xlabel('Validation Loss')
-    plt.ylabel('Frequency')
-
-    plt.subplot(1, 3, 3)
-    plt.hist(df_no_outliers['test_loss'], bins=30, color='lightcoral')
-    plt.title('Test Loss Distribution (No Outliers)')
-    plt.xlabel('Test Loss')
-    plt.ylabel('Frequency')
-
-    plt.tight_layout()
-    plt.savefig(f'figs/loss_histograms_no_outliers.png', dpi=300)
-    plt.close()
