@@ -9,13 +9,12 @@ import torch
 from sklearn.model_selection import train_test_split
 from libs.plot_funs import plot_distribution, plot_site_samples
 import time
-from libs.utils import setup_logging
 from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 import time
 from libs.hetero_data_creation import create_hetdata
-def create_sum_PFAS(pfas_gw, logger):
+def create_sum_PFAS(pfas_gw, logger, column='WSSN'):
     logger.info(f"COLUMNS\tMAX\tMIN\tMEDIAN\tNAN\tZEROS")
 
     for col in pfas_gw.columns:
@@ -32,24 +31,25 @@ def create_sum_PFAS(pfas_gw, logger):
     pfas_gw = pfas_gw[pfas_gw['sum_PFAS'] >= 0]
     assert pfas_gw['sum_PFAS'].isnull().sum() == 0, logger.error("There are nan values in sum_PFAS")
     logger.info(f"stage:create_sum_PFAS ==##== Number of pfas_gw: {len(pfas_gw)}")
-    assert len(pfas_gw['WSSN'].unique()) == len(pfas_gw), logger.error("There are duplicate WSSN values in pfas_gw")
+    assert len(pfas_gw[column].unique()) == len(pfas_gw), logger.error(f"There are duplicate {column} values in pfas_gw")
     logger.info(f"stage:create_sum_PFAS ==##== Range of sum_PFAS: {pfas_gw['sum_PFAS'].min()} - {pfas_gw['sum_PFAS'].max()}")
 
     return pfas_gw
 
 
-def average_over_time(pfas_gw, logger):
-    logger.info(f"stage:average_over_time ==##== Total number of samples: {len(pfas_gw)} with {pfas_gw.WSSN.nunique()} unique WSSN ID")
-    pfas_gw = pfas_gw[['WSSN'] + [col for col in pfas_gw.columns if col.endswith('Result')]]
+def average_over_time(pfas_gw, logger, column='WSSN'):
+    logger.info(f"stage:average_over_time ==##== Total number of samples: {len(pfas_gw)} with {pfas_gw[column].nunique()} unique {column} ID")
+    pfas_gw = pfas_gw[[column] + [col for col in pfas_gw.columns if col.endswith('Result')]]
     pfas_gw = pfas_gw.fillna(0, downcast='infer')
-    pfas_gw = pfas_gw.groupby('WSSN').mean().reset_index()
+    pfas_gw = pfas_gw.groupby(column).mean().reset_index()
 
-    logger.info(f"stage:average_over_time ==##== Number of samples after averaging over time {len(pfas_gw)} with {pfas_gw.WSSN.nunique()} unique WSSN ID")
+    logger.info(f"stage:average_over_time ==##== Number of samples after averaging over time {len(pfas_gw)} with {pfas_gw[column].nunique()} unique {column} ID")
 
     return pfas_gw
 
 
 def load_sampled_gw(data_dir, gw_features, logger):
+    
     pfas_gw = gpd.GeoDataFrame(
     pd.read_pickle(os.path.join(data_dir, "Huron_PFAS_GW_Features.pkl")),
     geometry='geometry',
@@ -63,6 +63,7 @@ def load_sampled_gw(data_dir, gw_features, logger):
     logger.info(f"stage:load_sampled_gw ==##== Number of unique SiteCode: {pfas_gw['SiteCode'].nunique()}")
 
 
+    
     pfas_gw_no_geometry = average_over_time(pfas_gw, logger)
 
     try:
@@ -77,7 +78,7 @@ def load_sampled_gw(data_dir, gw_features, logger):
     ), f"Allowed gw_features are {list(pfas_gw.columns)}"
 
 
-    pfas_gw = create_sum_PFAS(pfas_gw, logger)
+    pfas_gw = create_sum_PFAS(pfas_gw, logger, "WSSN")
     return pfas_gw
 
 def load_all_wssn(data_dir, gw_features, logger):
@@ -95,17 +96,23 @@ def load_all_wssn(data_dir, gw_features, logger):
 
 def load_pfas_gw(data_dir, gw_features, logger):
 
+
     pfas_gw = load_sampled_gw(data_dir, gw_features, logger)
     pfas_gw['sampled'] = 1
+    
     wssn_gw = load_all_wssn(data_dir,gw_features, logger)
+    
     wssn_gw['sampled'] = 0
+    
     logger.info(f"stage:load_pfas_gw ==##== Number of sampled gw: {len(pfas_gw[pfas_gw['sampled'] == 1])}")
     logger.info(f"stage:load_pfas_gw ==##== Number of unsampled gw: {len(wssn_gw[wssn_gw['sampled'] == 0])}")
+    
     ### concat them
     pfas_gw = pd.concat([pfas_gw, wssn_gw]).reset_index(drop=True)
     ## fillna with 0
     pfas_gw = pfas_gw.fillna(0, downcast='infer')
     print(pfas_gw.columns)
+    #time.sleep(100)
     #pfas_gw.drop(columns=['geometry']).drop_duplicates(subset='WSSN').to_csv(f"temp/pfas_gw{time.time()}.csv", index=False)
 
 
@@ -213,7 +220,7 @@ def classify_pfas_gw(pfas_gw, logger):
     assert pfas_gw['sum_PFAS'].min() >= 0, logger.error("There are negative values in sum_PFAS")
     assert pfas_gw['sampled'].nunique() == 2, logger.error("There are more than 2 unique values in sampled")
 
-    pfas_gw['sum_PFAS_class'] = pd.cut(pfas_gw['sum_PFAS'], bins=[-1, 0.1, 10, 10000], labels=[0, 1, 2])
+    pfas_gw['sum_PFAS_class'] = pd.cut(pfas_gw['sum_PFAS'], bins=[-1, 0.1, 5, 1000], labels=[0, 1, 2])
     # if there are wells that are not sampled, assign them to class 3
     pfas_gw['sum_PFAS_class'] = np.where(pfas_gw['sampled'] == 0, 3, pfas_gw['sum_PFAS_class'])
     logger.info(f"stage:classify_pfas_gw ==##== Number of pfas_gw classes 0 (representing 0 PFAS): {len(pfas_gw[pfas_gw['sum_PFAS_class'] == 0])}")
@@ -229,18 +236,62 @@ def classify_pfas_gw(pfas_gw, logger):
 
 
 
+def classify_pfas_sw(pfas_sw, logger):
+    ### assert no negative in pfas_sw sum_PFAS
+    assert pfas_sw['sum_PFAS'].min() >= 0, logger.error("There are negative values in sum_PFAS")
+    assert pfas_sw['sampled'].nunique() == 1, logger.error("There are more than 2 unique values in sampled")
+    print(pfas_sw['sum_PFAS'].min(), pfas_sw['sum_PFAS'].max(), pfas_sw['sum_PFAS'].isnull().sum())
 
-def split_sampled_pfas_gw(pfas_gw, logger):
-    logger.info(f"stage:split_sampled_pfas_gw ==##== Number of sampled pfas_gw: {len(pfas_gw[pfas_gw['sampled'] == 1])}")
-    sampled_pfas_gw = pfas_gw[pfas_gw['sampled'] == 1]
+    pfas_sw['sum_PFAS_class'] = pd.cut(pfas_sw['sum_PFAS'], bins=[-1, 200,500, 2000], labels=[0, 1, 2])
+    # if there are wells that are not sampled, assign them to class 3
+    pfas_sw['sum_PFAS_class'] = np.where(pfas_sw['sampled'] == 0, 3, pfas_sw['sum_PFAS_class'])
+    logger.info(f"stage:classify_pfas_sw ==##== Number of pfas_sw classes 0 (representing 0 PFAS): {len(pfas_sw[pfas_sw['sum_PFAS_class'] == 0])}")
+    logger.info(f"stage:classify_pfas_sw ==##== Number of pfas_sw classes 1 (representing 0-10 PFAS): {len(pfas_sw[pfas_sw['sum_PFAS_class'] == 1])}")
+    logger.info(f"stage:classify_pfas_sw ==##== Number of pfas_sw classes 2 (representing 10-1000 PFAS): {len(pfas_sw[pfas_sw['sum_PFAS_class'] == 2])}")
+    logger.info(f"stage:classify_pfas_sw ==##== Number of pfas_sw classes 3 (representing not sampled wells): {len(pfas_sw[pfas_sw['sum_PFAS_class'] == 3])}")
+
+
+    assert 0 in pfas_sw['sum_PFAS_class'].unique(),   logger.error("There is no class 0 in sum_PFAS_class")
+    assert 1 in pfas_sw['sum_PFAS_class'].unique(),   logger.error("There is no class 1 in sum_PFAS_class")
+    assert 2 in pfas_sw['sum_PFAS_class'].unique(),   logger.error("There is no class 2 in sum_PFAS_class")
+
+    #pfas_sw.to_csv(f"temp/classified_pfas_sw{time.time()}.csv")
+
+
+    return pfas_sw
+
+
+
+def split_sampled_gw_pfas_data(pfas_data, logger, name):
+
+    logger.info(f"############## Splitting {name} samples ##############")
+    logger.info(f"stage:split_sampled_pfas_{name} ==##== Number of sampled pfas_{name}: {len(pfas_data[pfas_data['sampled'] == 1])}")
+    sampled_pfas = pfas_data[pfas_data['sampled'] == 1]
     logger.info("splitting method: 70% train, 20% validation, 10% test")
-    train_gw, temp_gw = train_test_split(sampled_pfas_gw, test_size=0.3, random_state=42, stratify=sampled_pfas_gw['sum_PFAS_class'])
-    val_gw, test_gw = train_test_split(temp_gw, test_size=1/3, random_state=42, stratify=temp_gw['sum_PFAS_class'])
-    unsampled_pfas_gw = pfas_gw[pfas_gw['sampled'] == 0]
-    logger.info(f"stage:split_sampled_pfas_gw ==##== Number of train_gw range: {train_gw['sum_PFAS'].min()} - {train_gw['sum_PFAS'].max()} with {len(train_gw[train_gw['sum_PFAS'] == 0])} zeros")
-    logger.info(f"stage:split_sampled_pfas_gw ==##== Number of val_gw range: {val_gw['sum_PFAS'].min()} - {val_gw['sum_PFAS'].max()} with {len(val_gw[val_gw['sum_PFAS'] == 0])} zeros")
-    logger.info(f"stage:split_sampled_pfas_gw ==##== Number of test_gw range: {test_gw['sum_PFAS'].min()} - {test_gw['sum_PFAS'].max()} with {len(test_gw[test_gw['sum_PFAS'] == 0])} zeros")
-    return train_gw, val_gw, test_gw, unsampled_pfas_gw
+    train, temp = train_test_split(sampled_pfas, test_size=0.3, random_state=42, stratify=sampled_pfas['sum_PFAS_class'])
+    val, test = train_test_split(temp, test_size=1/3, random_state=42, stratify=temp['sum_PFAS_class'])
+    unsampled_pfas = pfas_data[pfas_data['sampled'] == 0]
+    logger.info(f"stage:split_sampled_pfas_{name} ==##== Number of train_{name} range: {train['sum_PFAS'].min()} - {train['sum_PFAS'].max()} with {len(train[train['sum_PFAS'] == 0])} zeros")
+    logger.info(f"stage:split_sampled_pfas_{name} ==##== Number of val_{name} range: {val['sum_PFAS'].min()} - {val['sum_PFAS'].max()} with {len(val[val['sum_PFAS'] == 0])} zeros")
+    logger.info(f"stage:split_sampled_pfas_{name} ==##== Number of test_{name} range: {test['sum_PFAS'].min()} - {test['sum_PFAS'].max()} with {len(test[test['sum_PFAS'] == 0])} zeros")
+
+
+    return train, val, test, unsampled_pfas
+
+def split_sampled_sw_pfas_data(pfas_data, logger, name):
+    logger.info(f"############## Splitting {name} samples ##############")
+    logger.info(f"stage:split_sampled_pfas_{name} ==##== Number of sampled pfas_{name}: {len(pfas_data[pfas_data['sampled'] == 1])}")
+    logger.info("splitting method: 70% train, 20% validation, 10% test")
+    train, temp = train_test_split(pfas_data, test_size=0.3, random_state=42, stratify=pfas_data['sum_PFAS_class'])
+    val, test = train_test_split(temp, test_size=1/3, random_state=42, stratify=temp['sum_PFAS_class'])
+    logger.info(f"stage:split_sampled_pfas_{name} ==##== Number of train_{name} range: {train['sum_PFAS'].min()} - {train['sum_PFAS'].max()} with {len(train[train['sum_PFAS'] == 0])} zeros")
+    logger.info(f"stage:split_sampled_pfas_{name} ==##== Number of val_{name} range: {val['sum_PFAS'].min()} - {val['sum_PFAS'].max()} with {len(val[val['sum_PFAS'] == 0])} zeros")
+    logger.info(f"stage:split_sampled_pfas_{name} ==##== Number of test_{name} range: {test['sum_PFAS'].min()} - {test['sum_PFAS'].max()} with {len(test[test['sum_PFAS'] == 0])} zeros")
+    ## assert no index value exceed the length of pfas_data
+    assert max(train.index) < len(pfas_data), f"Train index {max(train.index)} out of bounds"
+    assert max(val.index) < len(pfas_data), f"Val index {max(val.index)} out of bounds"
+    assert max(test.index) < len(pfas_data), f"Test index {max(test.index)} out of bounds"
+    return train, val, test
 
 def identify_zero_points(pfas_gw, logger):
     excluded_zeros = pfas_gw[pfas_gw['sum_PFAS'] == 0]
@@ -248,7 +299,40 @@ def identify_zero_points(pfas_gw, logger):
     return excluded_zeros
 
 
+def load_pfas_sw(data_dir,gw_features, logger):
+    pfas_sw = gpd.GeoDataFrame(
+        pd.read_pickle(os.path.join(data_dir, "Huron_PFAS_SW_Features.pkl")),
+        geometry='geometry',
+        crs='EPSG:4326'
+    ).to_crs("EPSG:26990").reset_index(drop=True)
+    logger.info(f"stage:load_pfas_sw ==##== Number of pfas_sw: {len(pfas_sw)}")
+    
+    pfas_sw_no_geometry = average_over_time(pfas_sw, logger, column='SiteCode')
 
+    
+
+
+    try:
+        pfas_sw = pfas_sw.drop_duplicates(subset=['SiteCode'])[['SiteCode','geometry']+gw_features].merge(
+            pfas_sw_no_geometry, on='SiteCode', how='inner'
+        )
+    except Exception as e:
+        logger.error(e)
+
+    assert all(
+        col in pfas_sw.columns for col in gw_features
+    ), f"Allowed gw_features are {list(pfas_sw.columns)}"
+    ## drop not SiteCode duplicates
+    assert len(pfas_sw) == len(pfas_sw.drop_duplicates(subset='SiteCode')), "There are duplicates in SiteCode"
+    pfas_sw['sw_node_index'] = pd.factorize(pfas_sw.index)[0]
+    ## assert insdex does not exceed the length of pfas_sw
+    assert max(pfas_sw['sw_node_index']) < len(pfas_sw), f"Train index {max(pfas_sw['sw_node_index'])} out of bounds"
+
+    pfas_sw['sampled'] = 1
+    pfas_sw = create_sum_PFAS(pfas_sw, logger, "SiteCode")
+    pfas_sw['SiteCode'] = pd.factorize(pfas_sw['SiteCode'])[0]
+    pfas_sw = pfas_sw.reset_index(drop=True)
+    return pfas_sw
 def load_dataset(args, device, logger):
 
 
@@ -257,49 +341,69 @@ def load_dataset(args, device, logger):
     pfas_sites_columns = args["pfas_sites_columns"]
     gw_features = args["gw_features"]
     distance_threshold = args["distance_threshold"]
+    pfas_sw_station_columns = args["pfas_sw_station_columns"]
 
     pfas_sites = load_pfas_sites(data_dir, logger)
+    
     pfas_gw = load_pfas_gw(data_dir, gw_features, logger)
     pfas_gw = classify_pfas_gw(pfas_gw, logger)
+    
+    pfas_sw = load_pfas_sw(data_dir,gw_features, logger)
+    pfas_sw = classify_pfas_sw(pfas_sw, logger)
+    pfas_sw = pfas_sw.reset_index(drop=True)
+    
+    if args.get("plot", False):
+        plot_distribution(pfas_gw, logger, name="gw")
+        plot_distribution(pfas_sw, logger, name="sw")
 
+    train_gw, val_gw, test_gw, unsampled_gw = split_sampled_gw_pfas_data(pfas_gw, logger, name="gw")
+    train_sw, val_sw, test_sw = split_sampled_sw_pfas_data(pfas_sw, logger, name="sw")
 
     if args.get("plot", False):
-        plot_distribution(pfas_gw, logger)
+        plot_site_samples(train_gw, val_gw, test_gw, pfas_sites, logger, name="gw")
+        plot_site_samples(train_sw, val_sw, test_sw, pfas_sites, logger, name="sw")
+        
+    data = create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_columns, pfas_sites_columns, pfas_sw_station_columns, gw_features, distance_threshold, logger)
 
-    train_gw, val_gw, test_gw, unsampled_gw = split_sampled_pfas_gw(pfas_gw, logger)
-
-    if args.get("plot", False):
-        plot_site_samples(train_gw, val_gw, test_gw, pfas_sites, logger)
-    data = create_hetdata(pfas_gw, unsampled_gw, pfas_sites, device, pfas_gw_columns, pfas_sites_columns, gw_features, distance_threshold, logger)
-
-    data = split_data(data, unsampled_gw, train_gw, val_gw, test_gw, logger).to(device)
+    data = split_data(data, unsampled_gw, train_gw, val_gw, test_gw, "gw_wells", logger).to(device) 
+    data = split_data(data, None, train_sw, val_sw, test_sw, "sw_stations", logger).to(device)
     ## assert geometry is in pfas_gw
     assert 'geometry' in pfas_gw.columns, "geometry column is missing in pfas_gw"
-    return data, pfas_gw
+    return data, pfas_gw, pfas_sw
 
-def split_data(data,unsampled_gw,  train_gw, val_gw, test_gw, logger):
-    train_indices = train_gw.index.values
-    val_indices = val_gw.index.values
-    test_indices = test_gw.index.values
-    unsampled_indices = unsampled_gw.index.values
+def split_data(data,unsampled_gw,  train, val, test, node_name, logger):
 
-    train_mask = torch.zeros(data['gw_wells'].num_nodes, dtype=torch.bool)
-    val_mask = torch.zeros(data['gw_wells'].num_nodes, dtype=torch.bool)
-    test_mask = torch.zeros(data['gw_wells'].num_nodes, dtype=torch.bool)
-    unsampled_mask = torch.zeros(data['gw_wells'].num_nodes, dtype=torch.bool)
+    train_indices = train.index.values
+    val_indices = val.index.values
+    test_indices = test.index.values
+
+        
+    print(f"train_indices: {np.sort(train_indices)}")
+    assert max(train_indices) < data[node_name].num_nodes, f"Train index {max(train_indices)} out of bounds"
+
+    train_mask = torch.zeros(data[node_name].num_nodes, dtype=torch.bool)
+    val_mask = torch.zeros(data[node_name].num_nodes, dtype=torch.bool)
+    test_mask = torch.zeros(data[node_name].num_nodes, dtype=torch.bool)
+    
     train_mask[train_indices] = True
     val_mask[val_indices] = True
     test_mask[test_indices] = True
-    unsampled_mask[unsampled_indices] = True
+
+    if unsampled_gw is not None:
+        unsampled_indices = unsampled_gw.index.values
+        unsampled_mask = torch.zeros(data[node_name].num_nodes, dtype=torch.bool)
+        unsampled_mask[unsampled_indices] = True
+        data[node_name].unsampled_mask = unsampled_mask
+        logger.info(f"stage:split_data ==##== Number of unsampled samples: {unsampled_mask.sum()} (NONE ZERO: {unsampled_gw['sum_PFAS'].gt(0).sum()})")
+
+    data[node_name].train_mask = train_mask
+    data[node_name].val_mask = val_mask
+    data[node_name].test_mask = test_mask
+    
 
 
-    data['gw_wells'].train_mask = train_mask
-    data['gw_wells'].val_mask = val_mask
-    data['gw_wells'].test_mask = test_mask
-    data['gw_wells'].unsampled_mask = unsampled_mask
+    logger.info(f"stage:split_data ==##== Number of training samples: {train_mask.sum()} (NONE ZERO: {train['sum_PFAS'].gt(0).sum()})")
+    logger.info(f"stage:split_data ==##== Number of validation samples: {val_mask.sum()} (NONE ZERO: {val['sum_PFAS'].gt(0).sum()})")
+    logger.info(f"stage:split_data ==##== Number of test samples: {test_mask.sum()} (NONE ZERO: {test['sum_PFAS'].gt(0).sum()})")
 
-    logger.info(f"stage:split_data ==##== Number of training samples: {train_mask.sum()}")
-    logger.info(f"stage:split_data ==##== Number of validation samples: {val_mask.sum()}")
-    logger.info(f"stage:split_data ==##== Number of test samples: {test_mask.sum()}")
-    logger.info(f"stage:split_data ==##== Number of unsampled samples: {unsampled_mask.sum()}")
     return data

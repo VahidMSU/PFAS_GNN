@@ -12,7 +12,7 @@ from joblib import Parallel, delayed
 from libs.plot_funs import plot_sum_pfas, plot_pred_sum_pfas, plot_loss_curve, plot_predictions
 from libs.GNN_models import get_model_by_name
 #from libs.hetero_data_creation import MainGNNModel
-from libs.utils import cleanup_models, remove_torch_geometry_garbage, remove_predictions, logging_fitting_results, get_features_string, setup_logging
+from libs.utils import cleanup_models, remove_torch_geometry_garbage, remove_predictions, logging_fitting_results, get_features_string, setup_logging, save_predictions
 from libs.load_data import load_dataset, load_pfas_gw
 import matplotlib.pyplot as plt
 from torch_geometric.nn import SAGEConv
@@ -31,16 +31,25 @@ def train(model, data, optimizer, criterion, device, logger, epochs=100, patienc
     patience_counter = 0
     ### generate a random number for the best_model.pth
     ## assert both gw_wells and pfas_sites are in the data
+    assert 'sw_stations' in data.x_dict.keys(), "sw_stations is missing in data"
     assert 'gw_wells' in data.x_dict.keys(), "gw_wells is missing in data"
     assert 'pfas_sites' in data.x_dict.keys(), "pfas_sites is missing in data"
     serial_number = uuid.uuid4().hex
     model.train()
     for epoch in range(epochs):
         optimizer.zero_grad()
-        out = model(data.x_dict, data.edge_index_dict)
+        out = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
         pred = out['gw_wells'][data['gw_wells'].train_mask]
         target = data['gw_wells'].x[data['gw_wells'].train_mask, 0].unsqueeze(1).to(device)
-        loss = criterion(pred, target)
+        gw_loss = criterion(pred, target)
+        ## assert gw_loss type 
+        assert isinstance(gw_loss, torch.Tensor), "gw_loss is not a tensor"
+        pred = out['sw_stations'][data['sw_stations'].train_mask]
+        target = data['sw_stations'].x[data['sw_stations'].train_mask, 0].unsqueeze(1).to(device)
+        sw_loss = criterion(pred, target)
+
+        loss = gw_loss + sw_loss
+
         loss.backward()
         optimizer.step()
 
@@ -50,7 +59,14 @@ def train(model, data, optimizer, criterion, device, logger, epochs=100, patienc
         with torch.no_grad():
             val_pred = out['gw_wells'][data['gw_wells'].val_mask]
             val_target = data['gw_wells'].x[data['gw_wells'].val_mask, 0].unsqueeze(1).to(device)
-            val_loss = criterion(val_pred, val_target)
+            gw_val_loss = criterion(val_pred, val_target)
+
+            val_pred = out['sw_stations'][data['sw_stations'].val_mask]
+            val_target = data['sw_stations'].x[data['sw_stations'].val_mask, 0].unsqueeze(1).to(device)
+            sw_val_loss = criterion(val_pred, val_target)
+
+            val_loss = gw_val_loss + sw_val_loss
+
             val_losses.append(val_loss.item())
 
         model.train()
@@ -72,84 +88,70 @@ def train(model, data, optimizer, criterion, device, logger, epochs=100, patienc
     return train_losses, val_losses, serial_number
 
 
-def save_predictions(pfas_gw, train_pred, val_pred, test_pred, data, unsampled_pred, device, args, serial_number):
-
-    # Get node indices for train, validation, and test samples
-    train_gw_node_index = data['gw_wells'].x[data['gw_wells'].train_mask, 1].to(device)
-    val_gw_node_index = data['gw_wells'].x[data['gw_wells'].val_mask, 1].to(device)
-    test_gw_node_index = data['gw_wells'].x[data['gw_wells'].test_mask, 1].to(device)
-    unsampled_node_index = data['gw_wells'].x[data['gw_wells'].unsampled_mask, 1].to(device)
-
-    # Concatenate predictions and WSSN values
-    all_pred = torch.cat([train_pred, val_pred, test_pred, unsampled_pred], dim=0)
-    all_wssn = torch.cat([train_gw_node_index, val_gw_node_index, test_gw_node_index, unsampled_node_index], dim=0)
-
-    # Convert to DataFrame
-    all_pred_wssn = pd.DataFrame({
-        'gw_node_index': all_wssn.cpu().numpy().astype(int),  # Ensure WSSN is of type string
-        'pred_sum_PFAS': all_pred.cpu().numpy().flatten()
-    })
-
-    #all_pred_wssn.to_csv('all_pred_gw_node_index.csv')
-    pfas_gw = pfas_gw.merge(all_pred_wssn, on='gw_node_index', how='left')
-    ## save pfas_gw
-    pfas_gw[['WSSN','sum_PFAS', 'pred_sum_PFAS']].to_csv(f'predictions_results/pfas_gw_pred_{serial_number}.csv', index=False, float_format='%.4f')
-    if args.get("plot", False):
-        plot_pred_sum_pfas(pfas_gw)
-        plot_sum_pfas(pfas_gw)
-
-def evaluate(pfas_gw, model, data, criterion, device, serial_number, args=None, logger=None):
+def evaluate(pfas_gw, model, data, criterion, device, serial_number,node_name, args=None, logger=None):
 
     assert 'geometry' in pfas_gw.columns, "geometry column is missing in pfas_gw"
     model.load_state_dict(torch.load(f'models/best_model_{serial_number}.pth'))
     model.eval()
 
     with torch.no_grad():
-        train_pred = model(data.x_dict, data.edge_index_dict)['gw_wells'][data['gw_wells'].train_mask]
-        train_target = data['gw_wells'].x[data['gw_wells'].train_mask, 0].unsqueeze(1).to(device)
+        train_pred = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)[node_name][data[node_name].train_mask]
+        train_target = data[node_name].x[data[node_name].train_mask, 0].unsqueeze(1).to(device)
         train_loss = criterion(train_pred, train_target).item()
 
-        val_pred = model(data.x_dict, data.edge_index_dict)['gw_wells'][data['gw_wells'].val_mask]
-        val_target = data['gw_wells'].x[data['gw_wells'].val_mask, 0].unsqueeze(1).to(device)
+        val_pred = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)[node_name][data[node_name].val_mask]
+        val_target = data[node_name].x[data[node_name].val_mask, 0].unsqueeze(1).to(device)
         val_loss = criterion(val_pred, val_target).item()
 
-        test_pred = model(data.x_dict, data.edge_index_dict)['gw_wells'][data['gw_wells'].test_mask]    
-        test_target = data['gw_wells'].x[data['gw_wells'].test_mask, 0].unsqueeze(1).to(device)
+        test_pred = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)[node_name][data[node_name].test_mask]
+        test_target = data[node_name].x[data[node_name].test_mask, 0].unsqueeze(1).to(device)
         test_loss = criterion(test_pred, test_target).item()
 
         ### prediction for unsampled data
-        unsampled_pred = model(data.x_dict, data.edge_index_dict)['gw_wells'][data['gw_wells'].unsampled_mask]
-        logger.info(f"Number of unsampled data: {len(unsampled_pred)} and {unsampled_pred}")
-        unsampled_target = data['gw_wells'].x[data['gw_wells'].unsampled_mask, 0].unsqueeze(1).to(device)
-
-        save_predictions(pfas_gw, train_pred, val_pred, test_pred, data, unsampled_pred, device, args, serial_number)
+        if node_name == 'gw_wells':
+            unsampled_pred = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)[node_name][data[node_name].unsampled_mask]
+            logger.info(f"Number of unsampled data: {len(unsampled_pred)} and {unsampled_pred}")
+            unsampled_target = data[node_name].x[data[node_name].unsampled_mask, 0].unsqueeze(1).to(device)
+        else:
+            unsampled_pred = None
+            unsampled_target = None
+        save_predictions(pfas_gw, train_pred, val_pred, test_pred, data, unsampled_pred, device, args, serial_number, node_name)
 
         if args.get("verbose", False):
             logging_fitting_results(train_loss, val_loss, test_loss, train_target, train_pred, val_target, val_pred, test_target, test_pred,serial_number, logger)
 
     if args.get("plot", False):
-        plot_predictions(train_target, train_pred, val_target, val_pred, test_target, test_pred, unsampled_pred, unsampled_target)
+        if unsampled_pred is not None:
+            plot_predictions(train_target, train_pred, val_target, val_pred, test_target, test_pred, unsampled_pred, unsampled_target, logger, node_name)
+        else:
+            plot_predictions(train_target, train_pred, val_target, val_pred, test_target, test_pred, None, None, logger, node_name)
 
     return train_loss, val_loss, test_loss
 
 
-def train_and_evaluate(device, data, pfas_gw, in_channels_dict, logger, out_channels, epochs, lr, weight_decay, args):
+def train_and_evaluate(device, data, pfas_gw,pfas_sw, in_channels_dict, edge_attr_dict, logger, out_channels, epochs, lr, weight_decay, args):
     ### assert both gw_wells and pfas_sites are in the in_channels_dict
     assert 'gw_wells' in in_channels_dict.keys(), "gw_wells is missing in in_channels_dict"
     assert 'pfas_sites' in in_channels_dict.keys(), "pfas_sites is missing in in_channels_dict"
+    assert 'sw_stations' in in_channels_dict.keys(), "sw_stations is missing in in_channels_dict"
     
-    #model = get_model_by_name('leaky_relu_attention', in_channels_dict, out_channels=out_channels, aggregation='mean').to(device)
+    ## assert sw_stations in data 
+    assert "gw_wells" in data.x_dict.keys(), "gw_wells is missing in data"
+    assert 'pfas_sites' in data.x_dict.keys(), "pfas_sites is missing in data"
+    assert 'sw_stations' in data.x_dict.keys(), "sw_stations is missing in data"
+    
 
-    model = get_model_by_name(args['gnn_model'], in_channels_dict, out_channels=out_channels, aggregation=args['aggregation']).to(device)
+    model = get_model_by_name(args['gnn_model'], in_channels_dict = in_channels_dict, edge_attr_dict = edge_attr_dict, out_channels=out_channels, aggregation=args['aggregation']).to(device)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     
     criterion = nn.MSELoss()
     train_losses, val_losses, serial_number = train(model, data, optimizer, criterion, device, logger, epochs=epochs, args=args)
-    train_loss, val_loss, test_loss = evaluate(pfas_gw, model, data, criterion, device, serial_number, args=args, logger=logger)
-
-    logger.info(f"Train loss: {train_loss:.2f}, Validation loss: {val_loss:.2f}, Test loss: {test_loss:.2f}")
-    return (train_loss, val_loss, test_loss)
+    gw_train_loss, gw_val_loss, gw_test_loss = evaluate(pfas_gw, model, data, criterion, device, serial_number, node_name='gw_wells', args=args, logger=logger)
+    sw_train_loss, sw_val_loss, sw_test_loss = evaluate(pfas_sw, model, data, criterion, device, serial_number, node_name='sw_stations', args=args, logger=logger)
+    logger.info(f"Train loss: {sw_train_loss:.2f}, Validation loss: {sw_val_loss:.2f}, Test loss: {sw_test_loss:.2f}")
+    logger.info(f"Train loss: {gw_train_loss:.2f}, Validation loss: {gw_val_loss:.2f}, Test loss: {gw_test_loss:.2f}")
+    return (gw_train_loss, gw_val_loss, gw_test_loss)
 
 
 def get_device():
@@ -166,15 +168,17 @@ def generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, dis
     in_channels_dict = {
         'pfas_sites': len(args['gw_features']) + 2,
         'gw_wells': len(args['gw_features']) + 2,
+        'sw_stations': len(args['gw_features']) + 2
     }
-    data, pfas_gw = load_dataset(args, device, logger)
+    data, pfas_gw, pfas_sw = load_dataset(args, device, logger)
+    edge_attr_dict =  data.edge_attr_dict
     if args.get("verbose", False):
         print("=========================================")
         print(f"#################### {data} ####################")
         print("=========================================")
     time.sleep(1)
     def single_iteration(_):
-        return train_and_evaluate(device, data, pfas_gw, in_channels_dict,logger, out_channels=out_channels, epochs=epochs, lr=lr, weight_decay=weight_decay, args=args)
+        return train_and_evaluate(device, data, pfas_gw,pfas_sw, in_channels_dict,edge_attr_dict, logger, out_channels=out_channels, epochs=epochs, lr=lr, weight_decay=weight_decay, args=args)
 
     if not single_none_parallel_run:
         # Run the iterations in parallel using ThreadPoolExecutor
@@ -188,7 +192,7 @@ def generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, dis
 
 
 def wrapped_experiment(params):
-    out_channels, epochs, lr, weight_decay, distance, gw_features = params
+    out_channels, epochs, lr, weight_decay, distance, gw_features,  gnn_model, aggregation = params
     return experiment(
         out_channels,
         epochs,
@@ -196,6 +200,9 @@ def wrapped_experiment(params):
         weight_decay,
         distance,
         gw_features,
+        gnn_model,
+        aggregation,
+
         single_none_parallel_run=False,
     )
 
@@ -234,12 +241,12 @@ def single_experiment_execution():
     epochs_options = 1000
     out_channels_options = 64
     weight_decay_options = 0.001
-    distance_options = 7000
+    distance_options = 7500
     #"geomorphons_250m_250Dis",  "LC22_EVH_220_250m", "MI_geol_poly_250m"
-    gw_features_options = []#['Aquifer_Characteristics_Of_Glacial_Drift_250m','MI_geol_poly_250m', 'DEM_250m', 'kriging_output_SWL_250m']#, 'landforms_250m_250Dis', 'geomorphons_250m_250Dis', 'LC22_EVH_220_250m', 'Aquifer_Characteristics_Of_Glacial_Drift_250m']#, 'landforms_250m_250Dis', 'MI_geol_poly_250m']
+    gw_features_options = ['DEM_250m','kriging_output_SWL_250m','Aquifer_Characteristics_Of_Glacial_Drift_250m'] #'Aquifer_Characteristics_Of_Glacial_Drift_250m']#,'kriging_output_SWL_250m' ,'MI_geol_poly_250m','Aquifer_Characteristics_Of_Glacial_Drift_250m']#,'MI_geol_poly_250m', 'DEM_250m', 'kriging_output_SWL_250m']#, 'landforms_250m_250Dis', 'geomorphons_250m_250Dis', 'LC22_EVH_220_250m', 'Aquifer_Characteristics_Of_Glacial_Drift_250m']#, 'landforms_250m_250Dis', 'MI_geol_poly_250m']
     #,'Aquifer_Characteristics_Of_Glacial_Drift_250m']#, "landforms_250m_250Dis",  'MI_geol_poly_250m']
-    # 'enhanced_sage_conv', 'parametric_relu_attention' 'leaky_relu_attention', 'leaky_relu', 'parametric_relu', 'tanh', 'relu', 'simple_GNNModel', 'ComplexGNNModel'
-    gnn_model = 'parametric_relu'
+    # 'enhanced_sage_conv', 'prelu_attention' 'leaky_relu_attention', 'leaky_relu', 'parametric_relu', 'tanh', 'relu', 'simple_GNNModel', 'ComplexGNNModel'
+    gnn_model = 'prelu' #'prelu_attention'
     aggregation = 'sum'
     all_combinations = [(out_channels_options, epochs_options, lr_options, weight_decay_options, distance_options, gw_features_options, gnn_model, aggregation)]
     ## choose random combination
@@ -269,6 +276,7 @@ def experiment(out_channels, epochs, lr, weight_decay, distance, gw_features, gn
         "data_dir": "/data/MyDataBase/HuronRiverPFAS/",
         "pfas_gw_columns": ['sum_PFAS'],
         "pfas_sites_columns": ['Industry'],
+        "pfas_sw_station_columns": ['sum_PFAS'],
         "gw_features": gw_features,
         "distance_threshold": distance,
         'gnn_model': gnn_model,
@@ -290,8 +298,11 @@ def experiment(out_channels, epochs, lr, weight_decay, distance, gw_features, gn
     df['weight_decay'] = weight_decay
     df['distance'] = distance
     df['gw_features'] = get_features_string(gw_features)
+    df['gnn_model'] = gnn_model
+    df['aggregation'] = aggregation
 
     return df
+
 def cleanup_gpu_memory():
     torch.cuda.empty_cache()
 
