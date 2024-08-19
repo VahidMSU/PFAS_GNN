@@ -12,26 +12,30 @@ def cleanup_temp_files():
     files = glob.glob('temp/*.csv')
     for f in files:
         os.remove(f)
+import logging
 
 def setup_logging(path='GNN_gw_pfas.txt', verbose=True):
-    ## if verbose is False, do not write on the console or 
-    if verbose:
-        with open(path, 'w') as f:
-            f.write('')
-        # Configure logger to write to both console and file
-        logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
+    # Clear the file at the start
+    with open(path, 'w') as f:
+        f.write('')
 
-        # Create a logger object
-        logger = logging.getLogger()
-        logger.setLevel(logging.INFO)
+    # Get the root logger
+    logger = logging.getLogger()
+
+    # If the logger already has handlers, skip adding them again
+    if not logger.hasHandlers():
+        if verbose:
+            logger.setLevel(logging.INFO)
+        else:
+            logger.setLevel(logging.ERROR)
 
         # Create file handler which logs even debug messages
         fh = logging.FileHandler(path)
-        fh.setLevel(logging.INFO)
+        fh.setLevel(logging.INFO if verbose else logging.ERROR)
 
         # Create console handler with a higher log level
         ch = logging.StreamHandler()
-        ch.setLevel(logging.INFO)
+        ch.setLevel(logging.INFO if verbose else logging.ERROR)
 
         # Create formatter and add it to the handlers
         formatter = logging.Formatter('%(levelname)s - %(message)s')
@@ -47,40 +51,8 @@ def setup_logging(path='GNN_gw_pfas.txt', verbose=True):
         error_logger.setLevel(logging.ERROR)
         error_logger.addHandler(fh)
         error_logger.addHandler(ch)
-        return logger
-    else:
-        with open(path, 'w') as f:
-            f.write('')
-        # Configure logger to write to both console and file
-        logging.basicConfig(level=logging.ERROR, format='%(levelname)s - %(message)s')
-
-        # Create a logger object
-        logger = logging.getLogger()
-        logger.setLevel(logging.ERROR)
-
-        # Create file handler which logs even debug messages
-        fh = logging.FileHandler(path)
-        fh.setLevel(logging.ERROR)
-
-        # Create console handler with a higher log level
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.ERROR)
-
-        # Create formatter and add it to the handlers
-        formatter = logging.Formatter('%(levelname)s - %(message)s')
-        fh.setFormatter(formatter)
-        ch.setFormatter(formatter)
-
-        # Add the handlers to the logger
-        logger.addHandler(fh)
-        logger.addHandler(ch)
-
-        # define error logger
-        error_logger = logging.getLogger('error')
-        error_logger.setLevel(logging.ERROR)
-        error_logger.addHandler(fh)
-        error_logger.addHandler(ch)
-        return logger
+    
+    return logger
 
 def get_features_string(gw_features):
     if "DEM_250m" in gw_features and "kriging_output_SWL_250m" in gw_features:
@@ -156,3 +128,62 @@ def logging_fitting_results(train_loss, val_loss, test_loss, train_target, train
     logger.info(f"\n{df}")
 
     return df
+
+
+
+
+def save_predictions(pfas_df, train_pred, val_pred, test_pred, data, unsampled_pred, device, args, serial_number, node_name):
+
+    import torch
+    import pandas as pd
+    from libs.plot_funs import plot_pred_sum_pfas, plot_sum_pfas
+    
+    # Concatenate predictions and WSSN values
+    if node_name == 'gw_wells':
+        
+        # Get node indices for train, validation, and test samples
+        train_gw_node_index = data[node_name].x[data[node_name].train_mask, 1].to(device)
+        val_gw_node_index = data[node_name].x[data[node_name].val_mask, 1].to(device)
+        test_gw_node_index = data[node_name].x[data[node_name].test_mask, 1].to(device)
+        unsampled_node_index = data[node_name].x[data[node_name].unsampled_mask, 1].to(device)
+        all_pred = torch.cat([train_pred, val_pred, test_pred, unsampled_pred], dim=0)
+        all_wssn = torch.cat([train_gw_node_index, val_gw_node_index, test_gw_node_index, unsampled_node_index], dim=0)
+        
+        # Convert to DataFrame
+        all_pred_wssn = pd.DataFrame({
+            'gw_node_index': all_wssn.cpu().numpy().astype(int),  # Ensure WSSN is of type string
+            'pred_sum_PFAS': all_pred.cpu().numpy().flatten()
+        })
+
+        #all_pred_wssn.to_csv('all_pred_gw_node_index.csv')
+        pfas_df = pfas_df.merge(all_pred_wssn, on='gw_node_index', how='left')
+        ## save pfas_df
+        pfas_df[['WSSN','sum_PFAS', 'pred_sum_PFAS']].to_csv(f'predictions_results/pfas_df_pred_{serial_number}.csv', index=False, float_format='%.4f')
+        if args.get("plot", False):
+            plot_pred_sum_pfas(pfas_df, node_name=node_name)
+            plot_sum_pfas(pfas_df, node_name=node_name)
+
+    elif node_name == 'sw_stations':
+        # Get node indices for train, validation, and test samples
+        train_sw_node_index = data[node_name].x[data[node_name].train_mask, 1].to(device)
+        val_sw_node_index = data[node_name].x[data[node_name].val_mask, 1].to(device)
+        test_sw_node_index = data[node_name].x[data[node_name].test_mask, 1].to(device)
+
+
+
+        all_pred = torch.cat([train_pred, val_pred, test_pred], dim=0)
+        all_wssn = torch.cat([train_sw_node_index, val_sw_node_index, test_sw_node_index], dim=0)
+
+        # Convert to DataFrame
+        all_pred_wssn = pd.DataFrame({
+            'sw_node_index': all_wssn.cpu().numpy().astype(int),  # Ensure WSSN is of type string
+            'pred_sum_PFAS': all_pred.cpu().numpy().flatten()
+        })
+
+        #all_pred_wssn.to_csv('all_pred_gw_node_index.csv')
+        pfas_df = pfas_df.merge(all_pred_wssn, on='sw_node_index', how='left')
+        ## save pfas_df
+        pfas_df[['SiteCode','sum_PFAS', 'pred_sum_PFAS']].to_csv(f'predictions_results/pfas_sw_pred_{serial_number}.csv', index=False, float_format='%.4f')
+        if args.get("plot", False):
+            plot_pred_sum_pfas(pfas_df, node_name=node_name)
+            plot_sum_pfas(pfas_df, node_name=node_name)
