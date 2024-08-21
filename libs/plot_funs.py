@@ -56,7 +56,7 @@ def plot_sum_pfas(pfas_gw, node_name):
    # assert all(
    #     i in pfas_gw['sum_PFAS_class'].unique() for i in [0, 1, 2]
     #), "There are missing classes in sum_PFAS_class"
-    colors = ['green', 'blue', 'yellow', "gray"]
+    colors = ['green', 'blue', 'red' , 'grey']
     pfas_gw = gpd.GeoDataFrame(pfas_gw, geometry='geometry', crs='EPSG:26990').to_crs("EPSG:4326")
 
     plt.figure(figsize=(8, 8))
@@ -64,65 +64,97 @@ def plot_sum_pfas(pfas_gw, node_name):
     if node_name == 'sw_stations':
         legend_labels = ['0-200', '200-500', f'500-{pfas_gw["sum_PFAS"].max():.1f}', 'unknown']
     else:
-        legend_labels = ['0', '0-10', f'10-{pfas_gw["sum_PFAS"].max():.1f}', 'unknown']
+        legend_labels = ['0-1','1-10',f'10-{pfas_gw["sum_PFAS"].max():.1f}', 'unknown']
     ### sort before plotting to show higher values on top
     #pfas_gw = pfas_gw.sort_values('sum_PFAS', ascending=False)
     ## sort in a way that we first see red, then blue, then green, then gray
     pfas_gw = pfas_gw.sort_values('sum_PFAS_class')
     for i, (name, group) in enumerate(pfas_gw.groupby('sum_PFAS_class', observed=True)):
-        if colors[i] == 'gray':
-            group.plot(ax=plt.gca(), color=colors[i],alpha=0.9, marker='x', markersize=5)
+        if colors[i] == 'grey':
+            group.plot(ax=plt.gca(), facecolor='none', edgecolor=colors[i], linewidth=0.5, alpha=0.8)
         else:
             group.plot(ax=plt.gca(), color=colors[i],alpha=0.8)
 
     plt.xlabel('Longitude')
     plt.ylabel('Latitude')
     plt.legend(["Huron River Basin"] + legend_labels, loc='lower left')
-    try:
+    if node_name == 'gw_wells':
         plt.title(f'#{pfas_gw["WSSN"].nunique()} water wells with unique WSSN')
-    except:
-        plt.title(f'#{pfas_gw["SiteCode"].nunique()} water wells with unique SiteCode')
+    elif node_name == 'sw_stations':
+        plt.title(f'#{pfas_gw["SiteCode"].nunique()} sites with unique SiteCode')
+    else:
+        plt.title('#ERROR IN TITLE')
     plt.grid(axis='both', linestyle='--', alpha=0.6)
     plt.tight_layout()
     plt.savefig(f'figs/sum_{node_name}_PFAS.png', dpi=300)
     plt.close()
 
+
+
 def plot_pred_sum_pfas(pfas_gw, node_name):
     assert "geometry" in pfas_gw.columns, "geometry column is missing in pfas_gw"
     assert len(pfas_gw) > 0, "pfas_gw is empty"
     assert "pred_sum_PFAS" in pfas_gw.columns, "pred_sum_PFAS column is missing in pfas_gw"
+    
+    # Load the boundaries
     bounds = pd.read_pickle("/data/MyDataBase/HuronRiverPFAS/Huron_River_basin_bound.pkl").to_crs("EPSG:4326")
-    ### classify predictions into negative, 0, 0-10, 10-1000. NOTE: the must be a specific group for only zeros
-    ### replace negative pfas_gw['pred_sum_PFAS'] with 0
+    
+    # Replace negative values with 0
     pfas_gw['pred_sum_PFAS'] = pfas_gw['pred_sum_PFAS'].clip(lower=0)
+    
+    # Define color and label mappings based on node_name
     if node_name == 'gw_wells':
-        pfas_gw['pred_sum_PFAS_class'] = pd.cut(pfas_gw['pred_sum_PFAS'], bins=[-1, 0, 0.5 ,10, 10000], labels=[0, 1, 2,3])
-        legend_labels = ['0','0-0.5 (model error)' ,'0.5-10', '10-1000']
+        class_bins = [-1, 1, 10, 50, 200]
+        class_colors = {0: 'green', 1: 'blue', 2: 'red'}
+        class_labels = {0: '0-1', 1: '1-10', 2: '10-200'}
     else:
-        pfas_gw['pred_sum_PFAS_class'] = pd.cut(pfas_gw['pred_sum_PFAS'], bins=[-1, 200, 500, 2000], labels=[0, 1, 2])
-        legend_labels = ['0','0-200' ,'200-500', '500-2000']
-    colors = ['green','yellow' ,'blue' ,'red']
+        class_bins = [-1, 0, 200, 500, 2000]
+        class_colors = {0: 'green', 1: 'yellow', 2: 'blue', 3: 'red'}
+        class_labels = {0: '0', 1: '0-200', 2: '200-500', 3: '500-2000'}
+    
+    # Classify the data
+    pfas_gw['pred_sum_PFAS_class'] = pd.cut(pfas_gw['pred_sum_PFAS'], bins=class_bins, labels=range(len(class_bins)-1))
+    
+    # Convert to GeoDataFrame and ensure correct CRS
     pfas_gw = gpd.GeoDataFrame(pfas_gw, geometry='geometry', crs='EPSG:26990').to_crs("EPSG:4326")
+    
+    # Plot setup
     plt.figure(figsize=(8, 8))
-    bounds.boundary.plot(ax=plt.gca(), facecolor='none', edgecolor='black', linewidth=1)
-    ### sort before plotting to show higher values on top
+    ax = plt.gca()
+    
+    # Plot the boundaries
+    bounds.boundary.plot(ax=ax, facecolor='none', edgecolor='black', linewidth=1)
+    
+    # Sort values for better visualization
     pfas_gw = pfas_gw.sort_values('pred_sum_PFAS')
-    for i, (name, group) in enumerate(pfas_gw.groupby('pred_sum_PFAS_class', observed=True)):
-        group.plot(ax=plt.gca(), color=colors[i], edgecolor='black', linewidth=0.5, alpha=0.5)
-
+    
+    # Plot each class with its assigned color
+    for class_value, color in class_colors.items():
+        class_group = pfas_gw[pfas_gw['pred_sum_PFAS_class'] == class_value]
+        if not class_group.empty:
+            class_group.plot(ax=ax, color=color, edgecolor='black', linewidth=0.5, alpha=0.5, label=class_labels[class_value])
+    
+    # Set axis labels
     plt.xlabel('Longitude')
     plt.ylabel('Latitude')
-    ## only 4 ticks for x and y axis
+    
+    # Set axis ticks and format
     plt.xticks(np.linspace(pfas_gw.total_bounds[0], pfas_gw.total_bounds[2], 4))
     plt.yticks(np.linspace(pfas_gw.total_bounds[1], pfas_gw.total_bounds[3], 4))
-    ## 2 decimal places for x and y axis
     plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: '{:.2f}'.format(x)))
     plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: '{:.2f}'.format(y)))
-    plt.legend(legend_labels, loc='lower left')
+    
+    # Add legend and title
+    plt.legend(loc='lower left')
     plt.title(f'Predicted Sum of PFAS for {len(pfas_gw)} samples with range: {pfas_gw["pred_sum_PFAS"].min():.2f} - {pfas_gw["pred_sum_PFAS"].max():.2f}')
+    
+    # Add grid
     plt.grid(axis='both', linestyle='--', alpha=0.6)
+    
+    # Save the plot
     plt.savefig(f'figs/pred_{node_name}_sum_PFAS.png', dpi=300)
     plt.close()
+
     
 def plot_predictions(train_target, train_pred, val_target, val_pred, test_target, test_pred, unsampled_pred, unsampled_target, logger, node_name):
     logger.info("###################################################")
@@ -152,8 +184,8 @@ def plot_predictions(train_target, train_pred, val_target, val_pred, test_target
     plt.ylabel('Predicted Sum of PFAS (ng/L)')
     plt.legend()
     plt.grid(axis='both', linestyle='--', alpha=0.6)
-    #plt.yscale('log')
-    #plt.xscale('log')
+    plt.yscale('log')
+    plt.xscale('log')
 
     plt.savefig(f'figs/{node_name}_predictions.png', dpi=300)
     plt.close()
