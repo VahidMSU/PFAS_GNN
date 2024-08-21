@@ -55,12 +55,24 @@ def setup_logging(path='GNN_gw_pfas.txt', verbose=True):
     return logger
 
 def get_features_string(gw_features):
-    if "DEM_250m" in gw_features and "kriging_output_SWL_250m" in gw_features:
+    for feature in gw_features:
+        if "kriging" in feature:
+            geological_feature = True
+    if "DEM_250m" in gw_features and "kriging_output_SWL_250m" in gw_features and not geological_feature:
         return "SWL and DEM"
-    elif "DEM_250m" in gw_features:
+    elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" not in gw_features and not geological_feature:
         return "DEM"
-    else:
-        return "None"
+    elif "DEM_250m" not in gw_features and "kriging_output_SWL_250m" in gw_features and not geological_feature:
+        return "SWL"
+    elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" in gw_features and not geological_feature:
+        return "SWL and DEM"
+    elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" in gw_features and geological_feature:
+        return "SWL, DEM and Geological"
+    elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" not in gw_features and geological_feature:
+        return "DEM and Geological"
+    elif "DEM_250m" not in gw_features and "kriging_output_SWL_250m" in gw_features and geological_feature:
+        return "SWL and Geological"
+    
 
 def cleanup_models():
     for f in glob.glob('models/*.pth'):
@@ -80,7 +92,7 @@ def remove_torch_geometry_garbage():
    
 def remove_predictions():
     os.makedirs('predictions_results', exist_ok=True)
-    files = glob.glob('predictions_results/pfas_gw_pred_*.csv')
+    files = glob.glob('predictions_results/*.csv')
     for f in files:
         os.remove(f)
 
@@ -137,7 +149,6 @@ def save_predictions(pfas_df, train_pred, val_pred, test_pred, data, unsampled_p
     import torch
     import pandas as pd
     from libs.plot_funs import plot_pred_sum_pfas, plot_sum_pfas
-    
     # Concatenate predictions and WSSN values
     if node_name == 'gw_wells':
         

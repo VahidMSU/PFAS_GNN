@@ -1,7 +1,6 @@
 import time
 import torch
 import torch.nn as nn
-import numpy as np
 import pandas as pd
 import os
 import random
@@ -11,67 +10,112 @@ import uuid
 from joblib import Parallel, delayed
 from libs.plot_funs import plot_sum_pfas, plot_pred_sum_pfas, plot_loss_curve, plot_predictions
 from libs.GNN_models import get_model_by_name
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 #from libs.hetero_data_creation import MainGNNModel
 from libs.utils import cleanup_models, remove_torch_geometry_garbage, remove_predictions, logging_fitting_results, get_features_string, setup_logging, save_predictions
-from libs.load_data import load_dataset, load_pfas_gw
-import matplotlib.pyplot as plt
-from torch_geometric.nn import SAGEConv
-from torch_geometric.nn import HeteroConv
-import torch.nn.functional as F
-from torch_geometric.nn import SAGEConv
+from libs.load_data import load_dataset
+## CUDA_LAUNCH_BLOCKING=1.
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 ## set cuda device
+def single_experiment_execution():
+    lr_options = 0.001
+    epochs_options = 2000
+    out_channels_options = 64
+    weight_decay_options = 0.001
+    distance_options = 10000
+    #"geomorphons_250m_250Dis",  "LC22_EVH_220_250m", "MI_geol_poly_250m"
 
+    gw_features_options = ['DEM_250m','kriging_output_SWL_250m',
+                        #   'gSURRGO_swat_250m',  
+                        #   'Aquifer_Characteristics_Of_Glacial_Drift_250m', 'MI_geol_poly_250m', 'landforms_250m_250Dis',
+                           'kriging_output_V_COND_1_250m', 'kriging_output_V_COND_2_250m',
+                           'kriging_output_AQ_THK_1_250m', 'kriging_output_AQ_THK_2_250m',
+                           'kriging_output_H_COND_1_250m', 'kriging_output_H_COND_2_250m',
+                           'kriging_output_TRANSMSV_1_250m', 'kriging_output_TRANSMSV_2_250m',
+                        #   "lat_250m", "lon_250m", 
+                        #   "LC22_EVH_220_250m", 
+                        # 'snow_water_equivalent_raster_250m', 
+                        #   "ppt_2018_250m", "ppt_2019_250m", 
+                        #   "ppt_2020_250m", "ppt_2021_250m", "ppt_2022_250m",  
+                        #   "QAMA_MILP_250m",'QBMA_MILP_250m', 'QCMA_MILP_250m', 'QDMA_MILP_250m', "PETMA_MILP_250m",
+                        #   'ArQNavMA_MILP_250m', 'AvgQAdjMA_MILP_250m','COUNTY_250m'
+                        ]
+    
 
-
-
-def train(model, data, optimizer, criterion, device, logger, epochs=100, patience=25, args=None):
+    #'Aquifer_Characteristics_Of_Glacial_Drift_250m']#,'kriging_output_SWL_250m' ,'MI_geol_poly_250m','Aquifer_Characteristics_Of_Glacial_Drift_250m']#,'MI_geol_poly_250m', 'DEM_250m', 'kriging_output_SWL_250m']#, 'landforms_250m_250Dis', 'geomorphons_250m_250Dis', 'LC22_EVH_220_250m', 'Aquifer_Characteristics_Of_Glacial_Drift_250m']#, 'landforms_250m_250Dis', 'MI_geol_poly_250m']
+    #,'Aquifer_Characteristics_Of_Glacial_Drift_250m']#, "landforms_250m_250Dis",  'MI_geol_poly_250m']
+    
+    gnn_model =  "prelu_edge_attention"  # "prelu_edge_attention"# 'prelu_edge_combined' # prelu_edge,
+    aggregation = 'mean'
+    all_combinations = [(out_channels_options, epochs_options, lr_options, weight_decay_options, distance_options, gw_features_options, gnn_model, aggregation)]
+    ## choose random combination
+    params = random.choice(all_combinations)
+    experiment(*params, single_none_parallel_run = True)
+    
+def train(model, data, optimizer, criterion, scheduler, device, logger, epochs=100, patience=25, args=None, clip_value=1.0):
     train_losses = []
     val_losses = []
     best_val_loss = float('inf')
     patience_counter = 0
-    ### generate a random number for the best_model.pth
-    ## assert both gw_wells and pfas_sites are in the data
-    assert 'sw_stations' in data.x_dict.keys(), "sw_stations is missing in data"
-    assert 'gw_wells' in data.x_dict.keys(), "gw_wells is missing in data"
-    assert 'pfas_sites' in data.x_dict.keys(), "pfas_sites is missing in data"
+
+    # Extract true targets before training
+    gw_train_target = data['gw_wells'].x[data['gw_wells'].train_mask, 0].unsqueeze(1).to(device)
+    gw_val_target = data['gw_wells'].x[data['gw_wells'].val_mask, 0].unsqueeze(1).to(device)
+    gw_test_target = data['gw_wells'].x[data['gw_wells'].test_mask, 0].unsqueeze(1).to(device)
+
+    sw_train_target = data['sw_stations'].x[data['sw_stations'].train_mask, 0].unsqueeze(1).to(device)
+    sw_val_target = data['sw_stations'].x[data['sw_stations'].val_mask, 0].unsqueeze(1).to(device)
+    sw_test_target = data['sw_stations'].x[data['sw_stations'].test_mask, 0].unsqueeze(1).to(device)
+
+    mean_train = data['gw_wells'].x[data['gw_wells'].train_mask, 0].mean().item()
+    mean_all_data = data['gw_wells'].x[:, 0].mean().item()
+    std_all_data = data['gw_wells'].x[:, 0].std().item()
+    std_train = data['gw_wells'].x[data['gw_wells'].train_mask, 0].std().item()
+
+    # Ensure the length of the tensor matches the length of the unsampled mask
+    unsampled_mask_length = data['gw_wells'].unsampled_mask.sum().item()
+    
+    # Move the unsampled_mask to the same device
+    unsampled_mask = data['gw_wells'].unsampled_mask.to(device)
+    
+    # Perform the assignment operation on the same device
+    data['gw_wells'].x[unsampled_mask, 0] = (0.5 * std_train * torch.randn(unsampled_mask_length, device=device) + mean_train)
     serial_number = uuid.uuid4().hex
     model.train()
     for epoch in range(epochs):
         optimizer.zero_grad()
         out = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
-        pred = out['gw_wells'][data['gw_wells'].train_mask]
-        target = data['gw_wells'].x[data['gw_wells'].train_mask, 0].unsqueeze(1).to(device)
-        gw_loss = criterion(pred, target)
-        ## assert gw_loss type 
-        assert isinstance(gw_loss, torch.Tensor), "gw_loss is not a tensor"
-        pred = out['sw_stations'][data['sw_stations'].train_mask]
-        target = data['sw_stations'].x[data['sw_stations'].train_mask, 0].unsqueeze(1).to(device)
-        sw_loss = criterion(pred, target)
-
-        loss = gw_loss + sw_loss
+        
+        # Use the actual targets for loss calculation
+        gw_loss = criterion(out['gw_wells'][data['gw_wells'].train_mask], gw_train_target)
+        sw_loss = criterion(out['sw_stations'][data['sw_stations'].train_mask], sw_train_target)
+        
+        
+        loss = gw_loss  # + 0.0001 * sw_loss 
 
         loss.backward()
+
+        # Apply gradient clipping
+        torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
+
         optimizer.step()
 
         train_losses.append(loss.item())
 
         model.eval()
         with torch.no_grad():
-            val_pred = out['gw_wells'][data['gw_wells'].val_mask]
-            val_target = data['gw_wells'].x[data['gw_wells'].val_mask, 0].unsqueeze(1).to(device)
-            gw_val_loss = criterion(val_pred, val_target)
+            gw_val_loss = criterion(out['gw_wells'][data['gw_wells'].val_mask], gw_val_target)
+            sw_val_loss = criterion(out['sw_stations'][data['sw_stations'].val_mask], sw_val_target)
 
-            val_pred = out['sw_stations'][data['sw_stations'].val_mask]
-            val_target = data['sw_stations'].x[data['sw_stations'].val_mask, 0].unsqueeze(1).to(device)
-            sw_val_loss = criterion(val_pred, val_target)
-
-            val_loss = gw_val_loss + sw_val_loss
-
+            val_loss = gw_val_loss  # + 0.0001 * sw_val_loss
             val_losses.append(val_loss.item())
 
         model.train()
-        if args.get("verbose", False) and (epoch+1) % 10 == 0:
+        if args.get("verbose", False) and (epoch + 1) % 10 == 0:
             print(f"Epoch {epoch+1}, Training Loss: {loss.item():.2f}, Validation Loss: {val_loss.item():.2f}")
+
+        # Update the scheduler with the validation loss
+        scheduler.step(val_loss)
 
         if val_loss.item() < best_val_loss:
             best_val_loss = val_loss.item()
@@ -83,12 +127,14 @@ def train(model, data, optimizer, criterion, device, logger, epochs=100, patienc
         if patience_counter >= patience:
             logger.info(f'Early stopping at epoch {epoch+1}')
             break
+
     if args.get("plot", False):
         plot_loss_curve(train_losses, val_losses, logger)
-    return train_losses, val_losses, serial_number
+        
+    return serial_number, gw_train_target, gw_val_target, gw_test_target, sw_train_target, sw_val_target, sw_test_target
 
 
-def evaluate(pfas_gw, model, data, criterion, device, serial_number,node_name, args=None, logger=None):
+def evaluate(pfas_gw, model, data, criterion, device, serial_number, train_target, val_target, test_target, node_name, args, logger):
 
     assert 'geometry' in pfas_gw.columns, "geometry column is missing in pfas_gw"
     model.load_state_dict(torch.load(f'models/best_model_{serial_number}.pth'))
@@ -96,19 +142,19 @@ def evaluate(pfas_gw, model, data, criterion, device, serial_number,node_name, a
 
     with torch.no_grad():
         train_pred = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)[node_name][data[node_name].train_mask]
-        train_target = data[node_name].x[data[node_name].train_mask, 0].unsqueeze(1).to(device)
+        #train_target = data[node_name].x[data[node_name].train_mask, 0].unsqueeze(1).to(device)
         train_loss = criterion(train_pred, train_target).item()
 
         val_pred = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)[node_name][data[node_name].val_mask]
-        val_target = data[node_name].x[data[node_name].val_mask, 0].unsqueeze(1).to(device)
+        #val_target = data[node_name].x[data[node_name].val_mask, 0].unsqueeze(1).to(device)
         val_loss = criterion(val_pred, val_target).item()
 
         test_pred = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)[node_name][data[node_name].test_mask]
-        test_target = data[node_name].x[data[node_name].test_mask, 0].unsqueeze(1).to(device)
+        #test_target = data[node_name].x[data[node_name].test_mask, 0].unsqueeze(1).to(device)
         test_loss = criterion(test_pred, test_target).item()
 
         ### prediction for unsampled data
-        if node_name == 'gw_wells':
+        if "unsampled_mask" in data[node_name]:
             unsampled_pred = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)[node_name][data[node_name].unsampled_mask]
             logger.info(f"Number of unsampled data: {len(unsampled_pred)} and {unsampled_pred}")
             unsampled_target = data[node_name].x[data[node_name].unsampled_mask, 0].unsqueeze(1).to(device)
@@ -144,14 +190,16 @@ def train_and_evaluate(device, data, pfas_gw,pfas_sw, in_channels_dict, edge_att
     model = get_model_by_name(args['gnn_model'], in_channels_dict = in_channels_dict, edge_attr_dict = edge_attr_dict, out_channels=out_channels, aggregation=args['aggregation']).to(device)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    
+    #optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10, verbose=True)
+
     criterion = nn.MSELoss()
-    train_losses, val_losses, serial_number = train(model, data, optimizer, criterion, device, logger, epochs=epochs, args=args)
-    gw_train_loss, gw_val_loss, gw_test_loss = evaluate(pfas_gw, model, data, criterion, device, serial_number, node_name='gw_wells', args=args, logger=logger)
-    sw_train_loss, sw_val_loss, sw_test_loss = evaluate(pfas_sw, model, data, criterion, device, serial_number, node_name='sw_stations', args=args, logger=logger)
+    serial_number, gw_train_target, gw_val_target, gw_test_target, sw_train_target, sw_val_target, sw_test_target = train(model, data, optimizer, criterion, scheduler, device, logger, epochs=epochs, args=args)
+    gw_train_loss, gw_val_loss, gw_test_loss = evaluate(pfas_gw, model, data, criterion, device, serial_number, gw_train_target, gw_val_target, gw_test_target, node_name='gw_wells', args=args, logger=logger)
+    sw_train_loss, sw_val_loss, sw_test_loss = evaluate(pfas_sw, model, data, criterion, device, serial_number, sw_train_target, sw_val_target, sw_test_target, node_name='sw_stations', args=args, logger=logger)
     logger.info(f"Train loss: {sw_train_loss:.2f}, Validation loss: {sw_val_loss:.2f}, Test loss: {sw_test_loss:.2f}")
     logger.info(f"Train loss: {gw_train_loss:.2f}, Validation loss: {gw_val_loss:.2f}, Test loss: {gw_test_loss:.2f}")
-    return (gw_train_loss, gw_val_loss, gw_test_loss)
+    return (gw_train_loss, gw_val_loss, gw_test_loss, sw_train_loss, sw_val_loss, sw_test_loss)
 
 
 def get_device():
@@ -236,22 +284,7 @@ def main(single_none_parallel_run=False):
         parallel_experiments_execution(all_combinations)
 
 
-def single_experiment_execution():
-    lr_options = 0.001
-    epochs_options = 1000
-    out_channels_options = 64
-    weight_decay_options = 0.001
-    distance_options = 7500
-    #"geomorphons_250m_250Dis",  "LC22_EVH_220_250m", "MI_geol_poly_250m"
-    gw_features_options = ['DEM_250m','kriging_output_SWL_250m','Aquifer_Characteristics_Of_Glacial_Drift_250m'] #'Aquifer_Characteristics_Of_Glacial_Drift_250m']#,'kriging_output_SWL_250m' ,'MI_geol_poly_250m','Aquifer_Characteristics_Of_Glacial_Drift_250m']#,'MI_geol_poly_250m', 'DEM_250m', 'kriging_output_SWL_250m']#, 'landforms_250m_250Dis', 'geomorphons_250m_250Dis', 'LC22_EVH_220_250m', 'Aquifer_Characteristics_Of_Glacial_Drift_250m']#, 'landforms_250m_250Dis', 'MI_geol_poly_250m']
-    #,'Aquifer_Characteristics_Of_Glacial_Drift_250m']#, "landforms_250m_250Dis",  'MI_geol_poly_250m']
-    # 'enhanced_sage_conv', 'prelu_attention' 'leaky_relu_attention', 'leaky_relu', 'parametric_relu', 'tanh', 'relu', 'simple_GNNModel', 'ComplexGNNModel'
-    gnn_model = 'prelu' #'prelu_attention'
-    aggregation = 'sum'
-    all_combinations = [(out_channels_options, epochs_options, lr_options, weight_decay_options, distance_options, gw_features_options, gnn_model, aggregation)]
-    ## choose random combination
-    params = random.choice(all_combinations)
-    experiment(*params, single_none_parallel_run = True)
+
 
 
 def parallel_experiments_execution(all_combinations):
@@ -289,7 +322,7 @@ def experiment(out_channels, epochs, lr, weight_decay, distance, gw_features, gn
     if single_none_parallel_run:
         return best_losse
     # Create DataFrame with correct columns
-    df = pd.DataFrame(best_losse, columns=['train_loss', 'val_loss', 'test_loss'])
+    df = pd.DataFrame(best_losse, columns=['train_loss', 'val_loss', 'test_loss', 'sw_train_loss', 'sw_val_loss', 'sw_test_loss'])
     df = df.median()
     df = df.to_frame().T
     df['out_channels'] = out_channels
