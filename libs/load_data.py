@@ -365,18 +365,20 @@ def load_dataset(args, device, logger):
         plot_site_samples(train_sw, val_sw, test_sw, pfas_sites, logger, name="sw")
 
     var_names = get_features_string(gw_features)
-    if not os.path.exists(f"Hetero_data/{var_names}_{distance_threshold}.pth"):
+    if not os.path.exists(f"Hetero_data/{var_names}_{distance_threshold}_{gw_gw_distance_threshold}.pth"):
         data = create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_columns, pfas_sites_columns, pfas_sw_station_columns, gw_features, distance_threshold, logger, gw_gw_distance_threshold)
-        torch.save(data, f"Hetero_data/{var_names}_{distance_threshold}.pth")
+        torch.save(data, f"Hetero_data/{var_names}_{distance_threshold}_{gw_gw_distance_threshold}.pth")
     else:
-        data = torch.load(f"Hetero_data/{var_names}_{distance_threshold}.pth")
+        data = torch.load(f"Hetero_data/{var_names}_{distance_threshold}_{gw_gw_distance_threshold}.pth")
 
     data = data.to(device)  
     
     data = split_data(data, unsampled_gw, train_gw, val_gw, test_gw, "gw_wells", logger).to(device)
     data = split_data(data, None, train_sw, val_sw, test_sw, "sw_stations", logger).to(device)
+    
     ## assert geometry is in pfas_gw
     assert 'geometry' in pfas_gw.columns, "geometry column is missing in pfas_gw"
+
     return data, pfas_gw, pfas_sw
 
 def split_data(data,unsampled_gw,  train, val, test, node_name, logger):

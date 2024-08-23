@@ -111,7 +111,7 @@ def create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_c
     return data
 
 
-def create_node_edge_main(data, pfas_gw, pfas_sw, pfas_sites, device, distance_threshold, logger, gw_gw_distance_threshold=500):
+def create_node_edge_main(data, pfas_gw, pfas_sw, pfas_sites, device, distance_threshold, logger, gw_gw_distance_threshold):
 
     """" Create edges and distances between nodes """
 
