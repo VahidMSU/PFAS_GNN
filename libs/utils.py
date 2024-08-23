@@ -16,6 +16,8 @@ def cleanup_temp_files():
         os.remove(f)
 
 import logging
+import logging
+import logging
 
 def setup_logging(path='GNN_gw_pfas.txt', verbose=True):
     # Clear the file at the start
@@ -40,7 +42,7 @@ def setup_logging(path='GNN_gw_pfas.txt', verbose=True):
         ch = logging.StreamHandler()
         ch.setLevel(logging.INFO if verbose else logging.ERROR)
 
-        # Create formatter and add it to the handlers
+        # Create formatter without timestamp and root
         formatter = logging.Formatter('%(levelname)s - %(message)s')
         fh.setFormatter(formatter)
         ch.setFormatter(formatter)
@@ -49,13 +51,14 @@ def setup_logging(path='GNN_gw_pfas.txt', verbose=True):
         logger.addHandler(fh)
         logger.addHandler(ch)
 
-        # define error logger
+        # Define error logger
         error_logger = logging.getLogger('error')
         error_logger.setLevel(logging.ERROR)
         error_logger.addHandler(fh)
         error_logger.addHandler(ch)
     
     return logger
+
 
 def get_features_string(gw_features):
     for feature in gw_features:
@@ -74,11 +77,11 @@ def get_features_string(gw_features):
     elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" in gw_features and not geological_feature:
         return "SWL_DEM"
     elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" in gw_features and geological_feature:
-        return "SWL_DEM_Geological"
+        return "SWL_DEM_lithological"
     elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" not in gw_features and geological_feature:
-        return "DEM_Geological"
+        return "DEM_lithological"
     elif "DEM_250m" not in gw_features and "kriging_output_SWL_250m" in gw_features and geological_feature:
-        return "SWL_Geological"
+        return "SWL_lithological"
     
 
 def cleanup_models():
