@@ -15,14 +15,17 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from libs.utils import cleanup_models, remove_torch_geometry_garbage, remove_predictions, logging_fitting_results, get_features_string, setup_logging, save_predictions
 from libs.load_data import load_dataset
 ## CUDA_LAUNCH_BLOCKING=1.
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+#os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,3"
 ## set cuda device
 def single_experiment_execution():
+
     lr_options = 0.001
     epochs_options = 2000
     out_channels_options = 64
     weight_decay_options = 0.001
     distance_options = 10000
+    
     #"geomorphons_250m_250Dis",  "LC22_EVH_220_250m", "MI_geol_poly_250m"
 
     gw_features_options = ['DEM_250m','kriging_output_SWL_250m',
@@ -45,14 +48,85 @@ def single_experiment_execution():
     #'Aquifer_Characteristics_Of_Glacial_Drift_250m']#,'kriging_output_SWL_250m' ,'MI_geol_poly_250m','Aquifer_Characteristics_Of_Glacial_Drift_250m']#,'MI_geol_poly_250m', 'DEM_250m', 'kriging_output_SWL_250m']#, 'landforms_250m_250Dis', 'geomorphons_250m_250Dis', 'LC22_EVH_220_250m', 'Aquifer_Characteristics_Of_Glacial_Drift_250m']#, 'landforms_250m_250Dis', 'MI_geol_poly_250m']
     #,'Aquifer_Characteristics_Of_Glacial_Drift_250m']#, "landforms_250m_250Dis",  'MI_geol_poly_250m']
     
-    gnn_model =  "prelu_edge_attention"  # "prelu_edge_attention"# 'prelu_edge_combined' # prelu_edge,
+    gnn_model =  [
+        'SharedLinearPReLUModel',
+        'SeparateLinearModel',
+        'SeparateLinearReLUModel',
+        'DeepPReLUModel',
+        'GatedEdgePReLUGNN',
+        'GatedEdgeEmbeddingPReLUGNN',
+        'AttentionEdgePReLUGNN',
+
+
+    ][6]
     aggregation = 'mean'
     all_combinations = [(out_channels_options, epochs_options, lr_options, weight_decay_options, distance_options, gw_features_options, gnn_model, aggregation)]
     ## choose random combination
     params = random.choice(all_combinations)
     experiment(*params, single_none_parallel_run = True)
     
+
+
+
+def main(single_none_parallel_run=False):
+
+    # Define hyperparameter grid
+    out_channels_options = [16, 32, 48]
+    epochs_options = [1000]
+    lr_options = [0.001]
+    weight_decay_options = [0.005]
+    distance_options = [5000, 7500, 10000]
+
+    geological_features_options = [
+                        
+                        'kriging_output_SWL_250m', 'DEM_250m',
+
+                        'kriging_output_V_COND_1_250m', 'kriging_output_V_COND_2_250m',
+                        'kriging_output_AQ_THK_1_250m', 'kriging_output_AQ_THK_2_250m',
+                        'kriging_output_H_COND_1_250m', 'kriging_output_H_COND_2_250m',
+                        'kriging_output_TRANSMSV_1_250m', 'kriging_output_TRANSMSV_2_250m'
+                        
+                        ]
+    
+    gw_features_options = [['kriging_output_SWL_250m', 'DEM_250m'], ['DEM_250m'], geological_features_options]
+    #gw_features_options = [geological_features_options]
+
+    gnn_models =  [
+        'SharedLinearPReLUModel',
+        'SeparateLinearModel',
+        'SeparateLinearReLUModel',
+        'DeepPReLUModel',
+        'GatedEdgePReLUGNN',
+        'GatedEdgeEmbeddingPReLUGNN',
+        'AttentionEdgePReLUGNN',
+
+
+    ]
+    
+    aggregations = ['mean', 'max','sum']
+    # Generate all combinations of hyperparameters
+    all_combinations = list(itertools.product(
+        out_channels_options,
+        epochs_options,
+        lr_options,
+        weight_decay_options,
+        distance_options,
+        gw_features_options,
+        gnn_models,
+        aggregations
+    ))
+    print(f"number of all combinations: {len(all_combinations)}")
+
+    if single_none_parallel_run:
+        single_experiment_execution()
+    else:
+        parallel_experiments_execution(all_combinations)
+
+
+
 def train(model, data, optimizer, criterion, scheduler, device, logger, epochs=100, patience=25, args=None, clip_value=1.0):
+    # Enable anomaly detection
+    #torch.autograd.set_detect_anomaly(True)
     train_losses = []
     val_losses = []
     best_val_loss = float('inf')
@@ -122,7 +196,7 @@ def train(model, data, optimizer, criterion, scheduler, device, logger, epochs=1
             patience_counter = 0
             torch.save(model.state_dict(), f'models/best_model_{serial_number}.pth')
         else:
-            patience_counter += 1
+            patience_counter = 1 + patience_counter     
 
         if patience_counter >= patience:
             logger.info(f'Early stopping at epoch {epoch+1}')
@@ -190,25 +264,33 @@ def train_and_evaluate(device, data, pfas_gw,pfas_sw, in_channels_dict, edge_att
     model = get_model_by_name(args['gnn_model'], in_channels_dict = in_channels_dict, edge_attr_dict = edge_attr_dict, out_channels=out_channels, aggregation=args['aggregation']).to(device)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    #optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10, verbose=True)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
 
     criterion = nn.MSELoss()
-    serial_number, gw_train_target, gw_val_target, gw_test_target, sw_train_target, sw_val_target, sw_test_target = train(model, data, optimizer, criterion, scheduler, device, logger, epochs=epochs, args=args)
-    gw_train_loss, gw_val_loss, gw_test_loss = evaluate(pfas_gw, model, data, criterion, device, serial_number, gw_train_target, gw_val_target, gw_test_target, node_name='gw_wells', args=args, logger=logger)
-    sw_train_loss, sw_val_loss, sw_test_loss = evaluate(pfas_sw, model, data, criterion, device, serial_number, sw_train_target, sw_val_target, sw_test_target, node_name='sw_stations', args=args, logger=logger)
-    logger.info(f"Train loss: {sw_train_loss:.2f}, Validation loss: {sw_val_loss:.2f}, Test loss: {sw_test_loss:.2f}")
-    logger.info(f"Train loss: {gw_train_loss:.2f}, Validation loss: {gw_val_loss:.2f}, Test loss: {gw_test_loss:.2f}")
+    try:
+        serial_number, gw_train_target, gw_val_target, gw_test_target, sw_train_target, sw_val_target, sw_test_target = train(model, data, optimizer, criterion, scheduler, device, logger, epochs=epochs, args=args)
+        gw_train_loss, gw_val_loss, gw_test_loss = evaluate(pfas_gw, model, data, criterion, device, serial_number, gw_train_target, gw_val_target, gw_test_target, node_name='gw_wells', args=args, logger=logger)
+        sw_train_loss, sw_val_loss, sw_test_loss = evaluate(pfas_sw, model, data, criterion, device, serial_number, sw_train_target, sw_val_target, sw_test_target, node_name='sw_stations', args=args, logger=logger)
+        logger.info(f"Train loss: {sw_train_loss:.2f}, Validation loss: {sw_val_loss:.2f}, Test loss: {sw_test_loss:.2f}")
+        logger.info(f"Train loss: {gw_train_loss:.2f}, Validation loss: {gw_val_loss:.2f}, Test loss: {gw_test_loss:.2f}")
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        gw_train_loss, gw_val_loss, gw_test_loss = None, None, None
+        sw_train_loss, sw_val_loss, sw_test_loss = None, None, None
+        logger.info(f"Train loss: {sw_train_loss}, Validation loss: {sw_val_loss}, Test loss: {sw_test_loss}")
+        logger.info(f"Train loss: {gw_train_loss}, Validation loss: {gw_val_loss}, Test loss: {gw_test_loss}")
+
     return (gw_train_loss, gw_val_loss, gw_test_loss, sw_train_loss, sw_val_loss, sw_test_loss)
 
 
 def get_device():
-    os.environ["CUDA_VISIBLE_DEVICES"] = random.choice(['0', '1'])
-    ### check if device usage is less than 80%
-    device = torch.device('cuda' if torch.cuda.is_available() else Exception("No GPU available"))
-    ### check
-    return device
+    ### choose random device 0 or 1
+    import numpy as np
+    device = np.random.choice([0, 1])
+    return torch.device(f"cuda:{device}" if torch.cuda.is_available() else "cpu")
 
+
+import concurrent.futures
 
 def generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, distance, args, logger, single_none_parallel_run):
 
@@ -219,24 +301,28 @@ def generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, dis
         'sw_stations': len(args['gw_features']) + 2
     }
     data, pfas_gw, pfas_sw = load_dataset(args, device, logger)
-    edge_attr_dict =  data.edge_attr_dict
+    edge_attr_dict = data.edge_attr_dict
+
     if args.get("verbose", False):
         print("=========================================")
         print(f"#################### {data} ####################")
         print("=========================================")
     time.sleep(1)
-    def single_iteration(_):
-        return train_and_evaluate(device, data, pfas_gw,pfas_sw, in_channels_dict,edge_attr_dict, logger, out_channels=out_channels, epochs=epochs, lr=lr, weight_decay=weight_decay, args=args)
+    
+    def single_iteration(device, data, pfas_gw, pfas_sw, in_channels_dict, edge_attr_dict, logger, out_channels, epochs, lr, weight_decay, args):
+        return train_and_evaluate(device, data, pfas_gw, pfas_sw, in_channels_dict, edge_attr_dict, logger, out_channels=out_channels, epochs=epochs, lr=lr, weight_decay=weight_decay, args=args)
 
     if not single_none_parallel_run:
         # Run the iterations in parallel using ThreadPoolExecutor
-        max_workers = args.get("repeated_k_fold", 1)
+        max_workers = args.get("repeated_k_fold", 10)
+        worker_args = [(device, data, pfas_gw, pfas_sw, in_channels_dict, edge_attr_dict, logger, out_channels, epochs, lr, weight_decay, args) for _ in range(max_workers)]
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            best_losses = list(executor.map(single_iteration, range(max_workers)))
+            best_losses = list(executor.map(lambda p: single_iteration(*p), worker_args))
 
         return best_losses
     else:
-        return single_iteration(0)
+        return single_iteration(device, data, pfas_gw, pfas_sw, in_channels_dict, edge_attr_dict, logger, out_channels, epochs, lr, weight_decay, args)
 
 
 def wrapped_experiment(params):
@@ -254,42 +340,12 @@ def wrapped_experiment(params):
         single_none_parallel_run=False,
     )
 
-def main(single_none_parallel_run=False):
-
-    # Define hyperparameter grid
-    out_channels_options = [16, 32, 48, 64]
-    epochs_options = [500, 1000]
-    lr_options = [0.001, 0.005, 0.01]
-    weight_decay_options = [0.001, 0.005, 0.01]
-    distance_options = [5000, 7500, 10000]
-    gw_features_options = [['kriging_output_SWL_250m', 'DEM_250m'], ['DEM_250m'], []]
-    gnn_models = ['leaky_relu_attention', 'leaky_relu', 'parametric_relu', 'tanh', 'relu', 'simple_GNNModel', 'ComplexGNNModel']
-    aggregations = ['mean', 'add', 'max']
-    # Generate all combinations of hyperparameters
-    all_combinations = list(itertools.product(
-        out_channels_options,
-        epochs_options,
-        lr_options,
-        weight_decay_options,
-        distance_options,
-        gw_features_options,
-        gnn_models,
-        aggregations
-    ))
-    print(f"number of all combinations: {len(all_combinations)}")
-
-    if single_none_parallel_run:
-        single_experiment_execution()
-    else:
-        parallel_experiments_execution(all_combinations)
-
-
 
 
 
 def parallel_experiments_execution(all_combinations):
     # Use parallel processing to run experiments
-    all_dataframes = Parallel(n_jobs=50)(delayed(wrapped_experiment)(params) for params in all_combinations)
+    all_dataframes = Parallel(n_jobs=10)(delayed(wrapped_experiment)(params) for params in all_combinations)
     save_results(all_dataframes)
 
 def save_results(all_dataframes):
@@ -313,7 +369,8 @@ def experiment(out_channels, epochs, lr, weight_decay, distance, gw_features, gn
         "gw_features": gw_features,
         "distance_threshold": distance,
         'gnn_model': gnn_model,
-        'aggregation': aggregation
+        'aggregation': aggregation, 
+        "gw_gw_distance_threshold": 1000,
     }
 
     best_losse = generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, distance, args, logger, single_none_parallel_run)
@@ -321,8 +378,11 @@ def experiment(out_channels, epochs, lr, weight_decay, distance, gw_features, gn
 
     if single_none_parallel_run:
         return best_losse
+    
     # Create DataFrame with correct columns
     df = pd.DataFrame(best_losse, columns=['train_loss', 'val_loss', 'test_loss', 'sw_train_loss', 'sw_val_loss', 'sw_test_loss'])
+    ## drop None before calculating the median
+    df = df.dropna()
     df = df.median()
     df = df.to_frame().T
     df['out_channels'] = out_channels
@@ -341,11 +401,12 @@ def cleanup_gpu_memory():
 
 
 if __name__ == "__main__":
-    #os.makedirs('results', exist_ok=True)
-    #cleanup_gpu_memory()
-    #cleanup_models()
-    #remove_torch_geometry_garbage()
-    #remove_predictions()
-    main(single_none_parallel_run = True)
-    #remove_torch_geometry_garbage()
+
+    os.makedirs('results', exist_ok=True)
+    cleanup_gpu_memory()
+    cleanup_models()
+    remove_torch_geometry_garbage()
+    remove_predictions()
+    main(single_none_parallel_run = False)
+    remove_torch_geometry_garbage()
     print("Done")

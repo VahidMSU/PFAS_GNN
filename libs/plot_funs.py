@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import os 
-
+from matplotlib.colors import LogNorm
 
 def plot_distribution(pfas_gw, logger, name='gw'):
     logger.info("stage:plot_distribution ==##== Plotting sum of PFAS distribution")
@@ -89,6 +89,116 @@ def plot_sum_pfas(pfas_gw, node_name):
     plt.savefig(f'figs/sum_{node_name}_PFAS.png', dpi=300)
     plt.close()
 
+import matplotlib.pyplot as plt
+import geopandas as gpd
+import pandas as pd
+import numpy as np
+
+def plot_pred_sum_pfas_with_log_colorbar(pfas_gw, node_name):
+    assert "geometry" in pfas_gw.columns, "geometry column is missing in pfas_gw"
+    assert len(pfas_gw) > 0, "pfas_gw is empty"
+    assert "pred_sum_PFAS" in pfas_gw.columns, "pred_sum_PFAS column is missing in pfas_gw"
+    
+    # Load the boundaries
+    bounds = pd.read_pickle("/data/MyDataBase/HuronRiverPFAS/Huron_River_basin_bound.pkl").to_crs("EPSG:4326")
+    
+    # Replace negative values with 0
+    pfas_gw['pred_sum_PFAS'] = pfas_gw['pred_sum_PFAS'].clip(lower=0.01)  # Avoid log(0) by clipping to a small positive value
+    
+    # Convert to GeoDataFrame and ensure correct CRS
+    pfas_gw = gpd.GeoDataFrame(pfas_gw, geometry='geometry', crs='EPSG:26990').to_crs("EPSG:4326")
+    
+    # Plot setup
+    plt.figure(figsize=(8, 8))
+    ax = plt.gca()
+    
+    # Plot the boundaries
+    bounds.boundary.plot(ax=ax, facecolor='none', edgecolor='black', linewidth=1)
+    
+    # Sort values for better visualization
+    pfas_gw = pfas_gw.sort_values('pred_sum_PFAS')
+    
+    # Plot the data with a logarithmic color map
+    pfas_gw.plot(ax=ax, column='pred_sum_PFAS', cmap='viridis', linewidth=0.5, edgecolor='none', alpha=1, norm=LogNorm(vmin=pfas_gw['pred_sum_PFAS'].min(), vmax=pfas_gw['pred_sum_PFAS'].max()), markersize=5)
+    
+    # Set axis labels
+    plt.xlabel('Longitude')
+    plt.ylabel('Latitude')
+    
+    # Set axis ticks and format
+    plt.xticks(np.linspace(pfas_gw.total_bounds[0], pfas_gw.total_bounds[2], 4))
+    plt.yticks(np.linspace(pfas_gw.total_bounds[1], pfas_gw.total_bounds[3], 4))
+    plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: '{:.2f}'.format(x)))
+    plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: '{:.2f}'.format(y)))
+    
+    # Add logarithmic color bar
+    sm = plt.cm.ScalarMappable(cmap='viridis', norm=LogNorm(vmin=pfas_gw['pred_sum_PFAS'].min(), vmax=pfas_gw['pred_sum_PFAS'].max()))
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=ax)
+    cbar.set_label('Predicted Sum of PFAS (Log Scale)')
+    
+    # Add title
+    plt.title(f'Predicted Sum of PFAS for {len(pfas_gw)} samples with range: {pfas_gw["pred_sum_PFAS"].min():.2f} - {pfas_gw["pred_sum_PFAS"].max():.2f}')
+    
+    # Add grid
+    plt.grid(axis='both', linestyle='--', alpha=0.6)
+    
+    # Save the plot
+    plt.tight_layout()
+    plt.savefig(f'figs/pred_{node_name}_sum_PFAS_log_colorbar.png', dpi=300)
+    plt.close()
+
+def plot_pred_sum_pfas_with_colorbar(pfas_gw, node_name):
+    assert "geometry" in pfas_gw.columns, "geometry column is missing in pfas_gw"
+    assert len(pfas_gw) > 0, "pfas_gw is empty"
+    assert "pred_sum_PFAS" in pfas_gw.columns, "pred_sum_PFAS column is missing in pfas_gw"
+    
+    # Load the boundaries
+    bounds = pd.read_pickle("/data/MyDataBase/HuronRiverPFAS/Huron_River_basin_bound.pkl").to_crs("EPSG:4326")
+    
+    # Replace negative values with 0
+    pfas_gw['pred_sum_PFAS'] = pfas_gw['pred_sum_PFAS'].clip(lower=0)
+    
+    # Convert to GeoDataFrame and ensure correct CRS
+    pfas_gw = gpd.GeoDataFrame(pfas_gw, geometry='geometry', crs='EPSG:26990').to_crs("EPSG:4326")
+    
+    # Plot setup
+    plt.figure(figsize=(8, 8))
+    ax = plt.gca()
+    
+    # Plot the boundaries
+    bounds.boundary.plot(ax=ax, facecolor='none', edgecolor='black', linewidth=1)
+    
+    # Sort values for better visualization
+    pfas_gw = pfas_gw.sort_values('pred_sum_PFAS', ascending=False)
+    
+    # Plot the data with a color map
+    pfas_gw.plot(ax=ax, column='pred_sum_PFAS', cmap='viridis', linewidth=0.5, edgecolor='black', alpha=0.5)
+    
+    # Set axis labels
+    plt.xlabel('Longitude')
+    plt.ylabel('Latitude')
+    
+    # Set axis ticks and format
+    plt.xticks(np.linspace(pfas_gw.total_bounds[0], pfas_gw.total_bounds[2], 4))
+    plt.yticks(np.linspace(pfas_gw.total_bounds[1], pfas_gw.total_bounds[3], 4))
+    plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: '{:.2f}'.format(x)))
+    plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: '{:.2f}'.format(y)))
+    
+    # Add color bar
+    sm = plt.cm.ScalarMappable(cmap='cividis', norm=plt.Normalize(vmin=pfas_gw['pred_sum_PFAS'].min(), vmax=pfas_gw['pred_sum_PFAS'].max()))
+    cbar = plt.colorbar(sm, ax=ax)
+    cbar.set_label('Predicted Sum of PFAS')
+    
+    # Add title
+    plt.title(f'Predicted Sum of PFAS for {len(pfas_gw)} samples with range: {pfas_gw["pred_sum_PFAS"].min():.2f} - {pfas_gw["pred_sum_PFAS"].max():.2f}')
+    
+    # Add grid
+    plt.grid(axis='both', linestyle='--', alpha=0.6)
+    
+    # Save the plot
+    plt.savefig(f'figs/pred_{node_name}_sum_PFAS_colorbar.png', dpi=300)
+    plt.close()
 
 
 def plot_pred_sum_pfas(pfas_gw, node_name):
@@ -155,7 +265,100 @@ def plot_pred_sum_pfas(pfas_gw, node_name):
     plt.savefig(f'figs/pred_{node_name}_sum_PFAS.png', dpi=300)
     plt.close()
 
+import matplotlib.pyplot as plt
+import geopandas as gpd
+import pandas as pd
+import numpy as np
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+import geopandas as gpd
+import pandas as pd
+import numpy as np
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+import geopandas as gpd
+import pandas as pd
+import numpy as np
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+import geopandas as gpd
+import pandas as pd
+import numpy as np
+from sklearn.cluster import KMeans
+
+def plot_pred_sum_pfas_kmeans(pfas_gw, node_name, n_clusters=3):
+    assert "geometry" in pfas_gw.columns, "geometry column is missing in pfas_gw"
+    assert len(pfas_gw) > 0, "pfas_gw is empty"
+    assert "pred_sum_PFAS" in pfas_gw.columns, "pred_sum_PFAS column is missing in pfas_gw"
     
+    # Load the boundaries
+    bounds = pd.read_pickle("/data/MyDataBase/HuronRiverPFAS/Huron_River_basin_bound.pkl").to_crs("EPSG:4326")
+    
+    # Replace negative values with 0
+    pfas_gw['pred_sum_PFAS'] = pfas_gw['pred_sum_PFAS'].clip(lower=0)
+    
+    # Perform K-means clustering on the PFAS predictions
+    kmeans = KMeans(n_clusters=n_clusters)
+    pfas_gw['pred_sum_PFAS_class'] = kmeans.fit_predict(pfas_gw[['pred_sum_PFAS']])
+    
+    # Sort the clusters by their mean values to ensure correct color assignment
+    cluster_means = pfas_gw.groupby('pred_sum_PFAS_class')['pred_sum_PFAS'].mean().sort_values()
+    sorted_clusters = cluster_means.index
+    
+    # Define color mappings based on sorted clusters
+    class_colors = {sorted_clusters[0]: 'green', sorted_clusters[1]: 'blue', sorted_clusters[2]: 'red'}
+    
+    # Create range-based labels for each cluster
+    class_labels = {}
+    for class_value in sorted_clusters:
+        class_group = pfas_gw[pfas_gw['pred_sum_PFAS_class'] == class_value]
+        class_min = class_group['pred_sum_PFAS'].min()
+        class_max = class_group['pred_sum_PFAS'].max()
+        class_labels[class_value] = f'{class_min:.2f} - {class_max:.2f}'
+    
+    # Convert to GeoDataFrame and ensure correct CRS
+    pfas_gw = gpd.GeoDataFrame(pfas_gw, geometry='geometry', crs='EPSG:26990').to_crs("EPSG:4326")
+    
+    # Plot setup
+    plt.figure(figsize=(8, 8))
+    ax = plt.gca()
+    
+    # Plot the boundaries
+    bounds.boundary.plot(ax=ax, facecolor='none', edgecolor='black', linewidth=1)
+    
+    # Sort values for better visualization
+    pfas_gw = pfas_gw.sort_values('pred_sum_PFAS')
+    
+    # Plot each class with its assigned color and label in the correct order
+    for class_value in sorted_clusters:
+        color = class_colors[class_value]
+        class_group = pfas_gw[pfas_gw['pred_sum_PFAS_class'] == class_value]
+        if not class_group.empty:
+            class_group.plot(ax=ax, color=color, edgecolor='black', linewidth=0.5, alpha=0.5, label=class_labels[class_value])
+    
+    # Set axis labels
+    plt.xlabel('Longitude')
+    plt.ylabel('Latitude')
+    
+    # Set axis ticks and format
+    plt.xticks(np.linspace(pfas_gw.total_bounds[0], pfas_gw.total_bounds[2], 4))
+    plt.yticks(np.linspace(pfas_gw.total_bounds[1], pfas_gw.total_bounds[3], 4))
+    plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: '{:.0f}'.format(x)))
+    plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: '{:.0f}'.format(y)))
+    
+    # Add legend and title
+    plt.legend(loc='lower left', title='PFAS Range')
+    plt.title(f'Predicted Sum of PFAS for {len(pfas_gw)} samples with range: {pfas_gw["pred_sum_PFAS"].min():.2f} - {pfas_gw["pred_sum_PFAS"].max():.2f}')
+    
+    # Add grid
+    plt.grid(axis='both', linestyle='--', alpha=0.6)
+    
+    # Save the plot
+    plt.savefig(f'figs/pred_{node_name}_sum_PFAS_kmeans_custom_ordered_colors.png', dpi=300)
+    plt.close()
+
+
+
 def plot_predictions(train_target, train_pred, val_target, val_pred, test_target, test_pred, unsampled_pred, unsampled_target, logger, node_name):
     logger.info("###################################################")
     logger.info(f"Number of train samples: %d {len(train_target)} with range: {train_target.min():.2f} - {train_target.max():.2f}")

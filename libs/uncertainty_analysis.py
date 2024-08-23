@@ -308,10 +308,11 @@ def shap_analysis(logger):
         'pfas_gw_columns': ['sum_PFAS'],
         'pfas_sites_columns': ['Industry'],
         'distance_threshold': 500,
+        'pfas_sw_station_columns' : ['sum_PFAS'],
 
     }
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   
-    data, pfas_gw = load_dataset(args,device, logger)
+    data, pfas_gw,pfas_sw = load_dataset(args,device, logger)
     model = torch.load(os.path.join("models",os.listdir("models")[0])   )
 
     explainer = shap.Explainer(model, data)
@@ -322,7 +323,7 @@ def shap_analysis(logger):
 if __name__ == "__main__":
     
     logger = setup_logging()
-    shap_analysis(logger)
-    #process_uncertainty_analysis(logger)
+    #shap_analysis(logger)
+    process_uncertainty_analysis(logger)
 
 
