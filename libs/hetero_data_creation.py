@@ -6,7 +6,6 @@ import torch
 
 
 
-
 def calculate_distances_gpu(des_coords, src_coords, device, logger, dtype=torch.float):
     # Move tensors to the device and convert to the desired precision
     src_tensor = torch.tensor(src_coords, dtype=dtype, device=device)
@@ -67,7 +66,7 @@ def create_edges_and_distances(des_node, src_node, device, threshold, logger):
 
     return edges, distances, dem_differences, swl_differences
 
-def create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_columns, pfas_sites_columns,pfas_sw_station_columns, gw_features, distance_threshold, logger):
+def create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_columns, pfas_sites_columns,pfas_sw_station_columns, gw_features, distance_threshold, logger, gw_gw_distance_threshold):
     
     logger.info(f"stage:create_hetdata ==##== distance_threshold: {distance_threshold}")
     logger.info(f"stage:create_hetdata ==##== Number of pfas_gw: {len(pfas_gw)}")
@@ -102,7 +101,7 @@ def create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_c
     assert len(pfas_sw['SiteCode'].unique()) == len(pfas_sw), f"There are duplicate SiteCode values in pfas_sw {len(pfas_sw['SiteCode'].unique())} - {len(pfas_sw)}"
 
     
-    data = create_node_edge_main(data, pfas_gw, pfas_sw, pfas_sites, device, distance_threshold, logger)
+    data = create_node_edge_main(data, pfas_gw, pfas_sw, pfas_sites, device, distance_threshold, logger, gw_gw_distance_threshold)
 
     data = add_self_loops(data, device)
 
@@ -112,7 +111,7 @@ def create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_c
     return data
 
 
-def create_node_edge_main(data, pfas_gw, pfas_sw, pfas_sites, device, distance_threshold, logger):
+def create_node_edge_main(data, pfas_gw, pfas_sw, pfas_sites, device, distance_threshold, logger, gw_gw_distance_threshold=500):
 
     """" Create edges and distances between nodes """
 
@@ -131,7 +130,7 @@ def create_node_edge_main(data, pfas_gw, pfas_sw, pfas_sites, device, distance_t
     data['sw_stations', 'dis_edge', 'gw_wells'].edge_index = gw_sw_edge_index
     data['gw_wells', 'dis_edge', 'sw_stations'].edge_index = gw_sw_edge_index[[1, 0], :]  # Reverse the edges for the reverse direction
 
-    gw_gw_edges, gw_gw_distances, gw_gw_dem_differences, gw_gw_swl_differences = create_edges_and_distances(pfas_gw, pfas_gw, device, threshold=500, logger=logger)
+    gw_gw_edges, gw_gw_distances, gw_gw_dem_differences, gw_gw_swl_differences = create_edges_and_distances(pfas_gw, pfas_gw, device, threshold=gw_gw_distance_threshold, logger=logger)
     gw_gw_edge_index = torch.tensor(gw_gw_edges, dtype=torch.long).t().contiguous()
     data['gw_wells', 'dis_edge', 'gw_wells'].edge_index = gw_gw_edge_index
 

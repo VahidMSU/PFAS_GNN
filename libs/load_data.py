@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 from libs.plot_funs import plot_distribution, plot_site_samples
 import time
 from libs.hetero_data_creation import create_hetdata
+from libs.utils import get_features_string
 
 def create_sum_PFAS(pfas_gw, logger, column='WSSN'):
     logger.info(f"COLUMNS\tMAX\tMIN\tMEDIAN\tNAN\tZEROS")
@@ -196,7 +197,7 @@ def load_pfas_sites(data_dir, logger, load_biosolid=False):
     # Set site_node_index after combining all sites
     combined_pfas_sites['site_node_index'] = pd.factorize(combined_pfas_sites.index)[0]
     ## assert no nan in all columns
-    combined_pfas_sites.to_csv(f"temp/combined_pfas_sites{time.time()}.csv", index=False)
+    #combined_pfas_sites.to_csv(f"temp/combined_pfas_sites{time.time()}.csv", index=False)
 
     assert combined_pfas_sites.isnull().sum().sum() == 0, "There are nan values in combined_pfas_sites"
 
@@ -341,6 +342,7 @@ def load_dataset(args, device, logger):
     gw_features = args["gw_features"]
     distance_threshold = args["distance_threshold"]
     pfas_sw_station_columns = args["pfas_sw_station_columns"]
+    gw_gw_distance_threshold = args["gw_gw_distance_threshold"]
 
     pfas_sites = load_pfas_sites(data_dir, logger)
 
@@ -362,13 +364,14 @@ def load_dataset(args, device, logger):
         plot_site_samples(train_gw, val_gw, test_gw, pfas_sites, logger, name="gw")
         plot_site_samples(train_sw, val_sw, test_sw, pfas_sites, logger, name="sw")
 
-    if not os.path.exists("HeteroData.pth"):
-        data = create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_columns, pfas_sites_columns, pfas_sw_station_columns, gw_features, distance_threshold, logger)
-        ### save the data
-        torch.save(data, f"HeteroData.pth")
+    var_names = get_features_string(gw_features)
+    if not os.path.exists(f"Hetero_data/{var_names}_{distance_threshold}.pth"):
+        data = create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_columns, pfas_sites_columns, pfas_sw_station_columns, gw_features, distance_threshold, logger, gw_gw_distance_threshold)
+        torch.save(data, f"Hetero_data/{var_names}_{distance_threshold}.pth")
     else:
-        data = torch.load("HeteroData.pth")
-        data = data.to(device)  
+        data = torch.load(f"Hetero_data/{var_names}_{distance_threshold}.pth")
+
+    data = data.to(device)  
     
     data = split_data(data, unsampled_gw, train_gw, val_gw, test_gw, "gw_wells", logger).to(device)
     data = split_data(data, None, train_sw, val_sw, test_sw, "sw_stations", logger).to(device)

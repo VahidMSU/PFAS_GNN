@@ -5,13 +5,16 @@ import logging
 import pandas as pd
 import numpy as np
 import pandas as pd
-
+import torch
+import pandas as pd
+from libs.plot_funs import plot_pred_sum_pfas, plot_sum_pfas, plot_pred_sum_pfas_with_colorbar, plot_pred_sum_pfas_with_log_colorbar, plot_pred_sum_pfas_kmeans
 
 def cleanup_temp_files():
     ## all csv files
     files = glob.glob('temp/*.csv')
     for f in files:
         os.remove(f)
+
 import logging
 
 def setup_logging(path='GNN_gw_pfas.txt', verbose=True):
@@ -56,22 +59,26 @@ def setup_logging(path='GNN_gw_pfas.txt', verbose=True):
 
 def get_features_string(gw_features):
     for feature in gw_features:
+
         if "kriging" in feature:
             geological_feature = True
+        else:
+            geological_feature = False
+
     if "DEM_250m" in gw_features and "kriging_output_SWL_250m" in gw_features and not geological_feature:
-        return "SWL and DEM"
+        return "SWL_DEM"
     elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" not in gw_features and not geological_feature:
         return "DEM"
     elif "DEM_250m" not in gw_features and "kriging_output_SWL_250m" in gw_features and not geological_feature:
         return "SWL"
     elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" in gw_features and not geological_feature:
-        return "SWL and DEM"
+        return "SWL_DEM"
     elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" in gw_features and geological_feature:
-        return "SWL, DEM and Geological"
+        return "SWL_DEM_Geological"
     elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" not in gw_features and geological_feature:
-        return "DEM and Geological"
+        return "DEM_Geological"
     elif "DEM_250m" not in gw_features and "kriging_output_SWL_250m" in gw_features and geological_feature:
-        return "SWL and Geological"
+        return "SWL_Geological"
     
 
 def cleanup_models():
@@ -146,9 +153,7 @@ def logging_fitting_results(train_loss, val_loss, test_loss, train_target, train
 
 def save_predictions(pfas_df, train_pred, val_pred, test_pred, data, unsampled_pred, device, args, serial_number, node_name):
 
-    import torch
-    import pandas as pd
-    from libs.plot_funs import plot_pred_sum_pfas, plot_sum_pfas
+
     # Concatenate predictions and WSSN values
     if node_name == 'gw_wells':
         
@@ -170,10 +175,18 @@ def save_predictions(pfas_df, train_pred, val_pred, test_pred, data, unsampled_p
         pfas_df = pfas_df.merge(all_pred_wssn, on='gw_node_index', how='left')
         ## save pfas_df
         pfas_df[['WSSN','sum_PFAS', 'pred_sum_PFAS']].to_csv(f'predictions_results/pfas_df_pred_{serial_number}.csv', index=False, float_format='%.4f')
+        
         if args.get("plot", False):
+            try:
+                plot_pred_sum_pfas_kmeans(pfas_df, node_name=node_name)
+            except Exception as e:
+                print(e)
+
+            plot_pred_sum_pfas_with_log_colorbar(pfas_df, node_name=node_name)
+            plot_pred_sum_pfas_with_colorbar(pfas_df, node_name=node_name)
             plot_pred_sum_pfas(pfas_df, node_name=node_name)
             plot_sum_pfas(pfas_df, node_name=node_name)
-
+            
     elif node_name == 'sw_stations':
         # Get node indices for train, validation, and test samples
         train_sw_node_index = data[node_name].x[data[node_name].train_mask, 1].to(device)
@@ -193,7 +206,9 @@ def save_predictions(pfas_df, train_pred, val_pred, test_pred, data, unsampled_p
 
         #all_pred_wssn.to_csv('all_pred_gw_node_index.csv')
         pfas_df = pfas_df.merge(all_pred_wssn, on='sw_node_index', how='left')
+
         ## save pfas_df
+
         pfas_df[['SiteCode','sum_PFAS', 'pred_sum_PFAS']].to_csv(f'predictions_results/pfas_sw_pred_{serial_number}.csv', index=False, float_format='%.4f')
         if args.get("plot", False):
             plot_pred_sum_pfas(pfas_df, node_name=node_name)
