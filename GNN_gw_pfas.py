@@ -14,17 +14,19 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 #from libs.hetero_data_creation import MainGNNModel
 from libs.utils import cleanup_models, remove_torch_geometry_garbage, remove_predictions, logging_fitting_results, get_features_string, setup_logging, save_predictions
 from libs.load_data import load_dataset
+import torch
+import GPUtil
 ## CUDA_LAUNCH_BLOCKING=1.
 #os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 ## set cuda device
 def single_experiment_execution():
 
     lr_options = 0.001
     epochs_options = 2000
-    out_channels_options = 64
+    out_channels_options = 16
     weight_decay_options = 0.001
-    distance_options = 10000
+    distance_options = 5000
     
     #"geomorphons_250m_250Dis",  "LC22_EVH_220_250m", "MI_geol_poly_250m"
 
@@ -49,17 +51,16 @@ def single_experiment_execution():
     #,'Aquifer_Characteristics_Of_Glacial_Drift_250m']#, "landforms_250m_250Dis",  'MI_geol_poly_250m']
     
     gnn_model =  [
+        'AttentionEdgePReLUGNN',
         'SharedLinearPReLUModel',
         'SeparateLinearModel',
         'SeparateLinearReLUModel',
         'DeepPReLUModel',
         'GatedEdgePReLUGNN',
         'GatedEdgeEmbeddingPReLUGNN',
-        'AttentionEdgePReLUGNN',
+    ][0]
 
-
-    ][6]
-    aggregation = 'mean'
+    aggregation = 'max'
     all_combinations = [(out_channels_options, epochs_options, lr_options, weight_decay_options, distance_options, gw_features_options, gnn_model, aggregation)]
     ## choose random combination
     params = random.choice(all_combinations)
@@ -249,6 +250,45 @@ def evaluate(pfas_gw, model, data, criterion, device, serial_number, train_targe
     return train_loss, val_loss, test_loss
 
 
+
+def wait_for_available_gpu(required_memory_gb=2, max_utilization=0.7):
+    """
+    Wait until a GPU has at least `required_memory_gb` of free memory and utilization is below `max_utilization`.
+    """
+    while True:
+        available_gpus = GPUtil.getGPUs()
+        
+        for gpu in available_gpus:
+            free_memory_gb = gpu.memoryFree / 1024  # Convert to GB
+            utilization = gpu.load  # GPU utilization (0 to 1)
+
+            # Check both memory and utilization
+            if free_memory_gb >= required_memory_gb and utilization < max_utilization:
+                print(f"Selecting GPU {gpu.id} with {free_memory_gb:.2f} GB free and {utilization*100:.2f}% utilization.")
+                return torch.device(f"cuda:{gpu.id}")
+        
+        # If no GPU is available, wait for a short period and check again
+        print("All GPUs are currently full or heavily utilized. Waiting for an available GPU...")
+        time.sleep(30)  # Wait for 30 seconds before checking again
+
+
+def get_least_used_gpu():
+    """
+    Selects the GPU with the most available memory.
+    """
+    while True:
+        available_gpus = GPUtil.getGPUs()
+        gpu = max(available_gpus, key=lambda x: x.memoryFree)
+
+        free_memory_gb = gpu.memoryFree / 1024  # Convert to GB
+        print(f"GPU {gpu.id} has {free_memory_gb:.2f} GB free.")
+        
+        if free_memory_gb >= 10:  # You can adjust the threshold as needed
+            return torch.device(f"cuda:{gpu.id}")
+        else:
+            print("All GPUs are currently full. Waiting for an available GPU...")
+            time.sleep(10)  # Wait before checking again
+
 def train_and_evaluate(device, data, pfas_gw,pfas_sw, in_channels_dict, edge_attr_dict, logger, out_channels, epochs, lr, weight_decay, args):
     ### assert both gw_wells and pfas_sites are in the in_channels_dict
     assert 'gw_wells' in in_channels_dict.keys(), "gw_wells is missing in in_channels_dict"
@@ -283,18 +323,25 @@ def train_and_evaluate(device, data, pfas_gw,pfas_sw, in_channels_dict, edge_att
     return (gw_train_loss, gw_val_loss, gw_test_loss, sw_train_loss, sw_val_loss, sw_test_loss)
 
 
-def get_device():
-    ### choose random device 0 or 1
-    import numpy as np
-    device = np.random.choice([0, 1])
-    return torch.device(f"cuda:{device}" if torch.cuda.is_available() else "cpu")
+
+
+def get_device(process_index):
+    # Get a list of all available GPUs with their load, memory usage, etc.
+    available_gpus = GPUtil.getGPUs()
+    
+    # Sort GPUs by the number of active processes, ascending
+    available_gpus_sorted = sorted(available_gpus, key=lambda gpu: gpu.memoryUtil)
+
+    # Select the GPU with the lowest load
+    selected_gpu = available_gpus_sorted[0].id
+
+    return torch.device(f"cuda:{selected_gpu}" if torch.cuda.is_available() else "cpu")
 
 
 import concurrent.futures
 
-def generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, distance, args, logger, single_none_parallel_run):
+def generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, distance, args, logger, single_none_parallel_run, process_index, device):
 
-    device = get_device()
     in_channels_dict = {
         'pfas_sites': len(args['gw_features']) + 2,
         'gw_wells': len(args['gw_features']) + 2,
@@ -325,8 +372,13 @@ def generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, dis
         return single_iteration(device, data, pfas_gw, pfas_sw, in_channels_dict, edge_attr_dict, logger, out_channels, epochs, lr, weight_decay, args)
 
 
-def wrapped_experiment(params):
+def wrapped_experiment(params, process_index):
     out_channels, epochs, lr, weight_decay, distance, gw_features,  gnn_model, aggregation = params
+    
+    # Wait for an available GPU with enough memory
+    device = wait_for_available_gpu(required_memory_gb=5)  # Adjust required_memory_gb as needed. this is based on MB or GB? GB
+    #device = get_least_used_gpu()
+
     return experiment(
         out_channels,
         epochs,
@@ -336,27 +388,35 @@ def wrapped_experiment(params):
         gw_features,
         gnn_model,
         aggregation,
-
+        process_index= process_index, 
         single_none_parallel_run=False,
+        device=device,
     )
-
-
 
 
 def parallel_experiments_execution(all_combinations):
     # Use parallel processing to run experiments
-    all_dataframes = Parallel(n_jobs=10)(delayed(wrapped_experiment)(params) for params in all_combinations)
+    all_dataframes = Parallel(n_jobs=20)(delayed(wrapped_experiment)(params, idx) for idx, params in enumerate(all_combinations))
     save_results(all_dataframes)
+
+
 
 def save_results(all_dataframes):
     all_dataframes = pd.concat(all_dataframes)
     all_dataframes.to_csv('results/GridSearchResults.csv', index=False)
+   
+    all_dataframes = all_dataframes.sort_values(by=['test_loss','val_loss',  'train_loss'], ascending=True)
+    all_dataframes = all_dataframes.reset_index()
+    all_dataframes = all_dataframes.groupby('gnn_model').first().drop(columns=['index'])
+    all_dataframes = all_dataframes.sort_values(by=['test_loss','val_loss',  'train_loss'], ascending=True)
+    all_dataframes = all_dataframes.round(4)
+    all_dataframes.to_csv('results/best_models.csv')
     print("All dataframes")
     print(all_dataframes)
 
 
 
-def experiment(out_channels, epochs, lr, weight_decay, distance, gw_features, gnn_model, aggregation,  single_none_parallel_run=True):
+def experiment(out_channels, epochs, lr, weight_decay, distance, gw_features, gnn_model, aggregation, process_index, single_none_parallel_run=True, device=None):
     logger = setup_logging()
     args = {
         "repeated_k_fold": 10,
@@ -373,7 +433,7 @@ def experiment(out_channels, epochs, lr, weight_decay, distance, gw_features, gn
         "gw_gw_distance_threshold": 1000,
     }
 
-    best_losse = generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, distance, args, logger, single_none_parallel_run)
+    best_losse = generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, distance, args, logger, single_none_parallel_run, process_index, device)
     print(f"Best losses: {best_losse}")
 
     if single_none_parallel_run:
