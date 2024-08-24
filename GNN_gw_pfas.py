@@ -59,21 +59,18 @@ def single_experiment_execution():
         
         'AttentionEdgePReLUGNN',
         'SharedLinearPReLUModel',
-        'DeepGraphSAGEModel',
-        'SeparateLinearReLUModel',
+        'DeepGatedEdgePReLUGNN',
+        'SeparateLinearModel',
         'GatedEdgePReLUGNN',
         'GatedEdgeEmbeddingPReLUGNN',
     ][2]
 
-    aggregation = 'max'
+    aggregation = 'mean'
     all_combinations = [(out_channels_options, epochs_options, lr_options, weight_decay_options, distance_options, gw_gw_distance_threshold, gw_features_options, gnn_model, aggregation)]
     ## choose random combination
     params = random.choice(all_combinations)
-    device = wait_for_available_gpu(required_memory_gb=5)  
+    device = torch.device('cuda:0')
     experiment(*params, single_none_parallel_run = True, process_index=0, device=device)
-    
-
-
 
 def main(single_none_parallel_run=False):
 
@@ -102,8 +99,8 @@ def main(single_none_parallel_run=False):
     gnn_models =  [
         'AttentionEdgePReLUGNN',
         'SharedLinearPReLUModel',
-        'DeepGraphSAGEModel',
-        'SeparateLinearReLUModel',
+        'DeepGatedEdgePReLUGNN',
+        'SeparateLinearModel',
         'GatedEdgePReLUGNN',
         'GatedEdgeEmbeddingPReLUGNN',
     ]
@@ -223,7 +220,7 @@ def train(model, data, optimizer, criterion, scheduler, device, logger, epochs=1
 def evaluate(pfas_gw, model, data, criterion, device, serial_number, train_target, val_target, test_target, node_name, args, logger):
 
     assert 'geometry' in pfas_gw.columns, "geometry column is missing in pfas_gw"
-    model.load_state_dict(torch.load(f'models/best_model_{serial_number}.pth'))
+    model.load_state_dict(torch.load(f'models/best_model_{serial_number}.pth', weights_only=True))
     model.eval()
 
     with torch.no_grad():
@@ -261,30 +258,6 @@ def evaluate(pfas_gw, model, data, criterion, device, serial_number, train_targe
     return train_loss, val_loss, test_loss
 
 
-
-def wait_for_available_gpu(required_memory_gb, max_utilization=0.7):
-    """
-    Wait until a GPU has at least `required_memory_gb` of free memory and utilization is below `max_utilization`.
-    """
-    # Manually define the available GPUs (in the order they should be mapped)
-    available_device_ids = [0, 2, 3]
-
-    while True:
-        available_gpus = GPUtil.getGPUs()
-
-        for gpu in available_gpus:
-            if gpu.id in available_device_ids:  # Only consider the GPUs we're using
-                free_memory_gb = gpu.memoryFree / 1024  # Convert to GB
-                utilization = gpu.load  # GPU utilization (0 to 1)
-
-                # Check both memory and utilization
-                if free_memory_gb >= required_memory_gb and utilization < max_utilization:
-                    print(f"Selecting GPU {gpu.id} with {free_memory_gb:.2f} GB free and {utilization*100:.2f}% utilization.")
-                    return torch.device(f"cuda:{gpu.id}")
-
-        # If no GPU is available, wait for a short period and check again
-        print("All GPUs are currently full or heavily utilized. Waiting for an available GPU...")
-        time.sleep(30)  # Wait for 30 seconds before chec
 
 
 
@@ -390,7 +363,7 @@ def parallel_experiments_execution(all_combinations, max_workers=25):
     available_gpus = [0, 1, 2, 3]
 
     # Create a process pool for parallel execution
-    with multiprocessing.Pool(processes=max_workers) as pool:
+    with multiprocessing.Pool(processes=15) as pool:
         # Map the tasks to the pool, each task will execute wrapped_experiment
         results = pool.starmap(wrapped_experiment, [(params, idx, available_gpus[idx % len(available_gpus)]) for idx, params in enumerate(all_combinations)])
     
@@ -432,7 +405,7 @@ def experiment(out_channels, epochs, lr, weight_decay, distance_options,gw_gw_di
     }
 
     best_losse = generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, distance_options, args, logger, single_none_parallel_run, process_index, device)
-    print(f"Best losses: {best_losse}")
+    #print(f"Best losses: {best_losse}")
 
     if single_none_parallel_run:
         return best_losse

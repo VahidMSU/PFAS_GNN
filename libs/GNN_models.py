@@ -10,7 +10,13 @@ def get_model_by_name(name, in_channels_dict, out_channels, aggregation, edge_at
     elif name == 'SeparateLinearReLUModel':
         from libs.SeparateLinearReLUModel import SeparateLinearReLUModel
         return SeparateLinearReLUModel(in_channels_dict, out_channels, aggregation, edge_attr_dict, **kwargs)
+    elif name == 'SeparateLinearModel':
+        from libs.SeparateLinearModel import SeparateLinearModel
+        return SeparateLinearModel(in_channels_dict, out_channels, aggregation, edge_attr_dict, **kwargs)
     
+    elif name == 'DeepGatedEdgePReLUGNN':
+        from libs.DeepGatedEdgePReLUGNN import DeepGatedEdgePReLUGNN
+        return DeepGatedEdgePReLUGNN(in_channels_dict, out_channels, aggregation, edge_attr_dict, **kwargs)
 
     elif name == 'GatedEdgePReLUGNN':
         from libs.GatedEdgePReLUGNN import GatedEdgePReLUGNN

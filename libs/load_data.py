@@ -107,7 +107,7 @@ def load_pfas_gw(data_dir, gw_features, logger):
     pfas_gw = pd.concat([pfas_gw, wssn_gw]).reset_index(drop=True)
     ## fillna with 0
     pfas_gw = pfas_gw.fillna(0, downcast='infer')
-    print(pfas_gw.columns)
+    #print(pfas_gw.columns)
     #time.sleep(100)
     #pfas_gw.drop(columns=['geometry']).drop_duplicates(subset='WSSN').to_csv(f"temp/pfas_gw{time.time()}.csv", index=False)
 
@@ -234,8 +234,8 @@ def classify_pfas_sw(pfas_sw, logger):
     ### assert no negative in pfas_sw sum_PFAS
     assert pfas_sw['sum_PFAS'].min() >= 0, logger.error("There are negative values in sum_PFAS")
     assert pfas_sw['sampled'].nunique() == 1, logger.error("There are more than 2 unique values in sampled")
-    print(pfas_sw['sum_PFAS'].min(), pfas_sw['sum_PFAS'].max(), pfas_sw['sum_PFAS'].isnull().sum())
-
+    #print(pfas_sw['sum_PFAS'].min(), pfas_sw['sum_PFAS'].max(), pfas_sw['sum_PFAS'].isnull().sum())
+    
     pfas_sw['sum_PFAS_class'] = pd.cut(pfas_sw['sum_PFAS'], bins=[-1, 200,500, 2000], labels=[0, 1, 2])
     # if there are wells that are not sampled, assign them to class 3
     pfas_sw['sum_PFAS_class'] = np.where(pfas_sw['sampled'] == 0, 3, pfas_sw['sum_PFAS_class'])

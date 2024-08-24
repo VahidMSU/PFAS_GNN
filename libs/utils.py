@@ -15,10 +15,6 @@ def cleanup_temp_files():
     for f in files:
         os.remove(f)
 
-import logging
-import logging
-import logging
-
 def setup_logging(path='GNN_gw_pfas.txt', verbose=True):
     # Clear the file at the start
     with open(path, 'w') as f:
