@@ -97,12 +97,12 @@ def main(single_none_parallel_run=False):
     #gw_features_options = [geological_features_options]
 
     gnn_models =  [
-        'AttentionEdgePReLUGNN',
-        'SharedLinearPReLUModel',
-        'DeepGatedEdgePReLUGNN',
-        'SeparateLinearModel',
+   #     'AttentionEdgePReLUGNN',
+    #    'SharedLinearPReLUModel',
+    #    'DeepGatedEdgePReLUGNN',
+    #    'SeparateLinearModel',
         'GatedEdgePReLUGNN',
-        'GatedEdgeEmbeddingPReLUGNN',
+    #    'GatedEdgeEmbeddingPReLUGNN',
     ]
     
     aggregations = ['mean', 'max','sum']
@@ -363,7 +363,7 @@ def parallel_experiments_execution(all_combinations, max_workers=25):
     available_gpus = [0, 1, 2, 3]
 
     # Create a process pool for parallel execution
-    with multiprocessing.Pool(processes=15) as pool:
+    with multiprocessing.Pool(processes=10) as pool:
         # Map the tasks to the pool, each task will execute wrapped_experiment
         results = pool.starmap(wrapped_experiment, [(params, idx, available_gpus[idx % len(available_gpus)]) for idx, params in enumerate(all_combinations)])
     
@@ -433,12 +433,12 @@ def cleanup_gpu_memory():
 
 
 if __name__ == "__main__":
-    os.makedirs('results', exist_ok=True)
-    cleanup_gpu_memory()
-    cleanup_models()
-    remove_torch_geometry_garbage()
-    remove_predictions()
-    main(single_none_parallel_run = False)
-    remove_torch_geometry_garbage()
-    print("Done")
-    gc.collect()
+    #os.makedirs('results', exist_ok=True)
+    #cleanup_gpu_memory()
+    #cleanup_models()
+    #remove_torch_geometry_garbage()
+    #remove_predictions()
+    main(single_none_parallel_run = True)
+    #remove_torch_geometry_garbage()
+    #print("Done")
+    #gc.collect()

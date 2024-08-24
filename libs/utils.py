@@ -181,8 +181,8 @@ def save_predictions(pfas_df, train_pred, val_pred, test_pred, data, unsampled_p
             except Exception as e:
                 print(e)
 
-            plot_pred_sum_pfas_with_log_colorbar(pfas_df, node_name=node_name)
-            plot_pred_sum_pfas_with_colorbar(pfas_df, node_name=node_name)
+            #plot_pred_sum_pfas_with_log_colorbar(pfas_df, node_name=node_name)
+            #plot_pred_sum_pfas_with_colorbar(pfas_df, node_name=node_name)
             plot_pred_sum_pfas(pfas_df, node_name=node_name)
             plot_sum_pfas(pfas_df, node_name=node_name)
             
