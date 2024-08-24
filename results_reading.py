@@ -44,17 +44,6 @@ def cluster_hyperparameters():
     df.to_csv('results/clusters_best_models.csv', index=False)
 
 
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-
 def plot_loss_distributions():
     # Load the data with cluster information
     df = pd.read_csv('results/clusters_best_models.csv').dropna()
@@ -98,6 +87,7 @@ def plot_loss_distributions():
 
 
 if __name__ == '__main__':
+    cluster_hyperparameters()
     plot_loss_distributions()
 
 
