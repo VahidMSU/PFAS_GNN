@@ -6,7 +6,12 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from matplotlib.patches import Patch
-
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
+from matplotlib.patches import Patch
 
 
 
@@ -80,15 +85,15 @@ def plot_uncertainty_mean_vs_observed_PFAS(path, logger):
 
 
 
-def classify_uncertainty(pfas_uncertainty, logger): 
-    """ using k-means to classify the uncertainty into classes based on the elbow method, using the following features:
+
+def classify_uncertainty(pfas_uncertainty, logger):
+    """
+    Using k-means to classify the uncertainty into classes based on the elbow method, using the following features:
     1- pred_sum_PFAS_mean 
     2 - pred_sum_PFAS_std 
     3 - pred_sum_PFAS_5th 
     4 - pred_sum_PFAS_95th
     """
-
-    
 
     # Extract features for clustering
     X = pfas_uncertainty[['pred_sum_PFAS_mean', 'pred_sum_PFAS_std', 'pred_sum_PFAS_5th', 'pred_sum_PFAS_95th']].values
@@ -102,8 +107,6 @@ def classify_uncertainty(pfas_uncertainty, logger):
 
     # Plot the elbow curve
     plt.figure(figsize=(8, 5))
-    ## first plot bounds
-    
     plt.plot(range(1, 11), wcss, marker='o', linestyle='--')
     plt.title('Elbow Method for Optimal Clusters')
     plt.xlabel('Number of Clusters')
@@ -112,32 +115,32 @@ def classify_uncertainty(pfas_uncertainty, logger):
     plt.show()
 
     # Choose the optimal number of clusters (based on visual inspection of the elbow plot)
-    optimal_clusters = 4 # Set this based on where the "elbow" occurs
+    optimal_clusters = 3  # Set this based on where the "elbow" occurs
 
     # Perform K-Means clustering with the optimal number of clusters
     kmeans = KMeans(n_clusters=optimal_clusters, random_state=0).fit(X)
     pfas_uncertainty['uncertainty_class'] = kmeans.labels_
 
-
-    from sklearn.mixture import GaussianMixture
-
-    # Assuming pfas_uncertainty is your DataFrame and optimal_clusters is defined
-    X = pfas_uncertainty[['pred_sum_PFAS_mean', 'pred_sum_PFAS_std', 'pred_sum_PFAS_5th', 'pred_sum_PFAS_95th']].values
+    # Use Gaussian Mixture Model to calculate probability of each cluster
     gmm = GaussianMixture(n_components=optimal_clusters, random_state=0).fit(X)
-
-    # Calculate probability of each cluster
     probabilities = gmm.predict_proba(X)
-
-    # Extract unique probabilities for each class
     unique_probabilities = {i: probabilities[:, i].mean() for i in range(optimal_clusters)}
 
     # Log the unique probabilities
     logger.info(f"Unique probabilities for each class: {unique_probabilities}")
+
     # Assign colors to clusters
-    #cluster_colors = {0: 'blue', 1: 'green', 2: 'orange', 3: 'red'}
-    # create cluster_colors based on the optimal_clusters, starting with color red, orange, yellow, green, blue, purple
     cluster_colors = {i: plt.cm.tab10(i) for i in range(optimal_clusters)}
 
+    # Calculate the range of sum_PFAS for each cluster
+    cluster_ranges = {}
+    for i in range(optimal_clusters):
+        cluster_data = pfas_uncertainty[pfas_uncertainty['uncertainty_class'] == i]
+        min_val = int(cluster_data['pred_sum_PFAS_mean'].min())
+        max_val = int(cluster_data['pred_sum_PFAS_mean'].max())
+        cluster_ranges[i] = f"{min_val}-{max_val}"
+
+    # Update color labels with sum_PFAS range
     pfas_uncertainty['color'] = pfas_uncertainty['uncertainty_class'].map(cluster_colors)
 
     # Plot the clusters
@@ -147,7 +150,7 @@ def classify_uncertainty(pfas_uncertainty, logger):
     pfas_uncertainty.to_crs("EPSG:4326").plot(ax=ax, color=pfas_uncertainty['color'], alpha=0.5)
 
     # Create a legend with custom patches
-    legend_patches = [Patch(color=color, label=f'Cluster {i}') for i, color in cluster_colors.items()]
+    legend_patches = [Patch(color=color, label=f'Range: {cluster_ranges[i]}') for i, color in cluster_colors.items()]
     ax.legend(handles=legend_patches, title="Uncertainty Clusters")
     plt.grid(axis='both', linestyle='--', alpha=0.5)
     plt.xlabel('Longitude')
@@ -209,8 +212,10 @@ def plot_uncertainty_distribution(pfas_gw, logger):
     # Plot each category separately
     for label, color in color_dict.items():
         subset = pfas_uncertainty[pfas_uncertainty['95th_class'] == label]
-        subset.plot(ax=ax, color=color, label=label, alpha=0.5)
-
+        try:
+            subset.plot(ax=ax, color=color, label=label, alpha=0.5)
+        except:
+            logger.info(f"Error in plotting class {label}")
     # Create a legend with probilities of the respectiv class
     legend_patches = [Patch(color=color, label=f'{label} (%{100*probabilities[label]:.2f})') for label, color in color_dict.items()]
 
@@ -231,7 +236,7 @@ def plot_uncertainty_distribution(pfas_gw, logger):
 
 
 def plot_loss_histograms():
-    path = "/home/rafieiva/MyDataBase/codes/PFAS_GNN/results/GridSearchResults.csv"
+    path = "/home/rafieiva/MyDataBase/codes/PFAS_GNN/figs_archive/results/GridSearchResults.csv"
     df = pd.read_csv(path)
 
     # Define a function to remove outliers using the IQR method
@@ -241,8 +246,9 @@ def plot_loss_histograms():
         IQR = Q3 - Q1
         lower_bound = Q1 - 1.5 * IQR
         upper_bound = Q3 + 1.5 * IQR
-        return df[(df[column] >= lower_bound) & (df[column] <= upper_bound)]
-
+        df2 = df[(df[column] >= lower_bound) & (df[column] <= upper_bound)]
+        print(f"Number of outliers removed from {column}: {len(df) - len(df2)}")
+        return df
     # Remove outliers from the loss columns
     df_no_outliers = df.copy()
     df_no_outliers = remove_outliers(df_no_outliers, 'train_loss')
@@ -250,33 +256,33 @@ def plot_loss_histograms():
     df_no_outliers = remove_outliers(df_no_outliers, 'test_loss')
 
     # Plot the histograms without outliers
-    plt.figure(figsize=(14, 6))
+    plt.figure(figsize=(8, 4))
 
     plt.subplot(1, 3, 1)
     plt.hist(df_no_outliers['train_loss'], bins=30, color='skyblue')
     plt.grid(axis='both', linestyle='--', alpha=0.5)
-    plt.title('Train Loss Distribution (No Outliers)')
+    plt.title(f"# {len(df_no_outliers)} Train Loss")
     plt.xlabel('Train Loss')
     plt.ylabel('Frequency')
 
     plt.subplot(1, 3, 2)
     plt.hist(df_no_outliers['val_loss'], bins=30, color='lightgreen')
     plt.grid(axis='both', linestyle='--', alpha=0.5)
-    plt.title('Validation Loss Distribution (No Outliers)')
+    plt.title(f"# {len(df_no_outliers)} Validation Loss")
     plt.xlabel('Validation Loss')
     plt.ylabel('Frequency')
 
     plt.subplot(1, 3, 3)
     plt.hist(df_no_outliers['test_loss'], bins=30, color='lightcoral')
     plt.grid(axis='both', linestyle='--', alpha=0.5)
-    plt.title('Test Loss Distribution (No Outliers)')
+    plt.title(f"# {len(df_no_outliers)} Test Loss")
     plt.xlabel('Test Loss')
     plt.ylabel('Frequency')
 
 
     
     plt.tight_layout()
-    plt.savefig('results/loss_histograms_no_outliers.png', dpi=300)
+    plt.savefig('results/loss_histograms.png', dpi=300)
     plt.close()
 
 def process_uncertainty_analysis(logger):

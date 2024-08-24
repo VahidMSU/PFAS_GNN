@@ -16,9 +16,9 @@ for file in files:
     gw_features = file.split('_')[:-2]
 
     # Extract node counts
-    sw_node_count = data['sw_stations'].x.size(0) if 'sw_stations' in data else 0
-    gw_node_count = data['gw_wells'].x.size(0) if 'gw_wells' in data else 0
-    pfas_node_count = data['pfas_sites'].x.size(0) if 'pfas_sites' in data else 0
+    sw_node_count = data['sw_stations'].x.size(0)
+    gw_node_count = data['gw_wells'].x.size(0)
+    pfas_node_count = data['pfas_sites'].x.size(0)
 
     # Extract edge counts for each edge type
     gw_sw_edges = data[('gw_wells', 'dis_edge', 'sw_stations')].edge_index.size(1) 
@@ -55,4 +55,4 @@ pd.set_option('display.max_colwidth', None)  # To ensure that all content in col
 print(df)
 
 # Optionally save to a CSV file
-df.to_csv('hetero_data_summary.csv', index=False)
+df.drop(columns=['File']).to_csv('HeteroData_info.csv', index=False)
