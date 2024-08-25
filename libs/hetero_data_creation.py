@@ -92,6 +92,8 @@ def create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_c
     data['gw_wells'].x = torch.tensor(pfas_gw[pfas_gw_columns + gw_features].values, dtype=torch.float)
     data['pfas_sites'].x = torch.tensor(pfas_sites[pfas_sites_columns + gw_features].values, dtype=torch.float)
 
+    
+
     pfas_gw = pfas_gw.drop_duplicates(subset='WSSN')  ### NOTE: need to be verified later
     #pfas_sw = pfas_sw.drop_duplicates(subset='SiteCode')  ### NOTE: need to be verified later
 
@@ -109,6 +111,7 @@ def create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_c
 
 
     return data
+
 
 
 def create_node_edge_main(data, pfas_gw, pfas_sw, pfas_sites, device, distance_threshold, logger, gw_gw_distance_threshold):
@@ -220,3 +223,27 @@ def add_self_loops(data, device):
     data['sw_stations', 'self_loop', 'sw_stations'].edge_index = sw_stations_self_loops
 
     return data
+
+
+def create_rivers_nodes_edges():
+    import geopandas as gpd 
+    import pandas as pd
+    path = "/data/MyDataBase/CIWRE-BAE/SWAT_input/huc8/4100013/SWAT_MODEL/Watershed/Shapes/rivs1.shp"
+    sw = gpd.read_file(path)    ##LINKNO, DSLINKNO
+    sw['riv_node_index'] = pd.factorize(sw['LINKNO'])[0]
+    ### define edges by LINKNO and DSLINKNO relationship 
+    
+
+    sw_edges = sw[['LINKNO', 'DSLINKNO']].values
+    sw_edges = np.unique(sw_edges, axis=0)
+    sw_edge_index = torch.tensor(sw_edges.T, dtype=torch.long)
+    ### define edge_attr using relevant columns
+    sw_edge_attr = torch.tensor(sw[['LENGTHKM', 'SLOPE', 'MANNING']].values, dtype=torch.float)
+    
+    
+    print(sw.columns)  
+
+if __name__ == "__main__":
+    create_rivers_nodes_edges()
+    
+    print("End of the script")

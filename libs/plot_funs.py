@@ -387,8 +387,15 @@ def plot_predictions(train_target, train_pred, val_target, val_pred, test_target
     plt.ylabel('Predicted Sum of PFAS (ng/L)')
     plt.legend()
     plt.grid(axis='both', linestyle='--', alpha=0.6)
-    plt.yscale('log')
-    plt.xscale('log')
+    if node_name == 'gw_wells':
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.xlim(0.01, 1000)
+        plt.ylim(0.01, 1000)
+    else:
+        plt.xlim(0, 2000)
+        plt.ylim(0, 2000)
+
 
     plt.savefig(f'figs/{node_name}_predictions.png', dpi=300)
     plt.close()

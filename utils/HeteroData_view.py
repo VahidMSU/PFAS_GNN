@@ -55,4 +55,4 @@ pd.set_option('display.max_colwidth', None)  # To ensure that all content in col
 print(df)
 
 # Optionally save to a CSV file
-df.drop(columns=['File']).to_csv('HeteroData_info.csv', index=False)
+df.drop(columns=['File']).to_csv('results/HeteroData_info.csv', index=False)

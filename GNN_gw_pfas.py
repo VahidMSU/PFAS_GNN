@@ -10,7 +10,6 @@ import uuid
 from libs.plot_funs import plot_loss_curve, plot_predictions
 from libs.GNN_models import get_model_by_name
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-#from libs.hetero_data_creation import MainGNNModel
 from libs.utils import cleanup_models, remove_torch_geometry_garbage, remove_predictions, logging_fitting_results, get_features_string, setup_logging, save_predictions
 from libs.load_data import load_dataset
 import torch
@@ -63,7 +62,7 @@ def single_experiment_execution():
         'SeparateLinearModel',
         'GatedEdgePReLUGNN',
         'GatedEdgeEmbeddingPReLUGNN',
-    ][2]
+    ][4]
 
     aggregation = 'mean'
     all_combinations = [(out_channels_options, epochs_options, lr_options, weight_decay_options, distance_options, gw_gw_distance_threshold, gw_features_options, gnn_model, aggregation)]
@@ -174,7 +173,7 @@ def train(model, data, optimizer, criterion, scheduler, device, logger, epochs=1
         sw_loss = criterion(out['sw_stations'][data['sw_stations'].train_mask], sw_train_target)
         
         
-        loss = gw_loss  # + 0.0001 * sw_loss 
+        loss = gw_loss   #+ 1 * sw_loss 
 
         loss.backward()
 
@@ -190,7 +189,7 @@ def train(model, data, optimizer, criterion, scheduler, device, logger, epochs=1
             gw_val_loss = criterion(out['gw_wells'][data['gw_wells'].val_mask], gw_val_target)
             sw_val_loss = criterion(out['sw_stations'][data['sw_stations'].val_mask], sw_val_target)
 
-            val_loss = gw_val_loss  # + 0.0001 * sw_val_loss
+            val_loss = gw_val_loss  # + 1 * sw_val_loss
             val_losses.append(val_loss.item())
 
         model.train()
@@ -258,9 +257,6 @@ def evaluate(pfas_gw, model, data, criterion, device, serial_number, train_targe
     return train_loss, val_loss, test_loss
 
 
-
-
-
 def train_and_evaluate(device, data, pfas_gw,pfas_sw, in_channels_dict, edge_attr_dict, logger, out_channels, epochs, lr, weight_decay, args):
     ### assert both gw_wells and pfas_sites are in the in_channels_dict
     assert 'gw_wells' in in_channels_dict.keys(), "gw_wells is missing in in_channels_dict"
@@ -314,6 +310,12 @@ def generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, dis
         print(f"#################### {data} ####################")
         print("=========================================")
     time.sleep(1)
+
+    ### print first column of pfas_sites node features
+    print(f"First column of pfas_sites node features: {data['pfas_sites'].x[:, 0]}")
+    ## now print unique values of pfas_sites node features
+    print(f"Unique values of pfas_sites node features: {torch.unique(data['pfas_sites'].x[:, 0])}")
+    #time.sleep(100)
     
     def single_iteration(device, data, pfas_gw, pfas_sw, in_channels_dict, edge_attr_dict, logger, out_channels, epochs, lr, weight_decay, args):
         return train_and_evaluate(device, data, pfas_gw, pfas_sw, in_channels_dict, edge_attr_dict, logger, out_channels=out_channels, epochs=epochs, lr=lr, weight_decay=weight_decay, args=args)
@@ -395,14 +397,17 @@ def experiment(out_channels, epochs, lr, weight_decay, distance_options,gw_gw_di
         "plot": single_none_parallel_run,
         "data_dir": "/data/MyDataBase/HuronRiverPFAS/",
         "pfas_gw_columns": ['sum_PFAS'],
-        "pfas_sites_columns": ['Industry'],
+        "pfas_sites_columns": ['inv_status'],
         "pfas_sw_station_columns": ['sum_PFAS'],
         "gw_features": gw_features,
         "distance_threshold": distance_options,
         'gnn_model': gnn_model,
         'aggregation': aggregation, 
         "gw_gw_distance_threshold": gw_gw_distance_threshold,
+
     }
+
+
 
     best_losse = generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, distance_options, args, logger, single_none_parallel_run, process_index, device)
     #print(f"Best losses: {best_losse}")
