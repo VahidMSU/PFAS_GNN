@@ -163,6 +163,8 @@ def add_unconfirmed_sites(data_dir, logger):
         crs='EPSG:4326'
     ).to_crs("EPSG:26990").reset_index(drop=True)
 
+
+
     unconfirmed_pfas_sites['inv_status'] = 0
 
     logger.info(f"stage:add_unconfirmed_sites ==##== Number of unconfirmed sites: {len(unconfirmed_pfas_sites)}")
@@ -204,10 +206,6 @@ def load_pfas_sites(data_dir, logger, load_biosolid=False):
     logger.info("stage:load_pfas_sites ==##== PFAS sites are all loaded")
 
     return combined_pfas_sites
-
-
-
-
 
 def classify_pfas_gw(pfas_gw, logger):
     ### assert no negative in pfas_gw sum_PFAS
@@ -312,12 +310,10 @@ def load_pfas_sw(data_dir,gw_features, logger):
 
 
 
-    try:
-        pfas_sw = pfas_sw.drop_duplicates(subset=['SiteCode'])[['SiteCode','geometry']+gw_features].merge(
-            pfas_sw_no_geometry, on='SiteCode', how='inner'
-        )
-    except Exception as e:
-        logger.error(e)
+    pfas_sw = pfas_sw.drop_duplicates(subset=['SiteCode'])[['SiteCode','geometry']+gw_features].merge(
+        pfas_sw_no_geometry, on='SiteCode', how='inner'
+    )
+
 
     assert all(
         col in pfas_sw.columns for col in gw_features
@@ -365,17 +361,20 @@ def load_dataset(args, device, logger):
         plot_site_samples(train_sw, val_sw, test_sw, pfas_sites, logger, name="sw")
 
     var_names = get_features_string(gw_features)
-    if not os.path.exists(f"Hetero_data/{var_names}_{distance_threshold}_{gw_gw_distance_threshold}.pth"):
+    REWRITE = True
+    if REWRITE:
+        data = create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_columns, pfas_sites_columns, pfas_sw_station_columns, gw_features, distance_threshold, logger, gw_gw_distance_threshold)
+        torch.save(data, f"Hetero_data/{var_names}_{distance_threshold}_{gw_gw_distance_threshold}.pth")
+    elif not os.path.exists(f"Hetero_data/{var_names}_{distance_threshold}_{gw_gw_distance_threshold}.pth"):
         data = create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_columns, pfas_sites_columns, pfas_sw_station_columns, gw_features, distance_threshold, logger, gw_gw_distance_threshold)
         torch.save(data, f"Hetero_data/{var_names}_{distance_threshold}_{gw_gw_distance_threshold}.pth")
     else:
         data = torch.load(f"Hetero_data/{var_names}_{distance_threshold}_{gw_gw_distance_threshold}.pth")
-
     data = data.to(device)  
-    
+
     data = split_data(data, unsampled_gw, train_gw, val_gw, test_gw, "gw_wells", logger).to(device)
     data = split_data(data, None, train_sw, val_sw, test_sw, "sw_stations", logger).to(device)
-    
+
     ## assert geometry is in pfas_gw
     assert 'geometry' in pfas_gw.columns, "geometry column is missing in pfas_gw"
 
@@ -409,8 +408,6 @@ def split_data(data,unsampled_gw,  train, val, test, node_name, logger):
     data[node_name].train_mask = train_mask
     data[node_name].val_mask = val_mask
     data[node_name].test_mask = test_mask
-
-
 
     logger.info(f"stage:split_data ==##== Number of training samples: {train_mask.sum()} (NONE ZERO: {train['sum_PFAS'].gt(0).sum()})")
     logger.info(f"stage:split_data ==##== Number of validation samples: {val_mask.sum()} (NONE ZERO: {val['sum_PFAS'].gt(0).sum()})")

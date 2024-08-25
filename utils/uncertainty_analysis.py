@@ -1,17 +1,12 @@
-from libs.load_data import load_pfas_gw, load_pfas_sites, load_dataset
+from libs.load_data import load_pfas_gw, load_dataset
 from libs.utils import setup_logging
 import os 
-import pandas as pd
-import geopandas as gpd
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from matplotlib.patches import Patch
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
-from matplotlib.patches import Patch
+
 
 
 
@@ -85,7 +80,6 @@ def plot_uncertainty_mean_vs_observed_PFAS(path, logger):
 
 
 
-
 def classify_uncertainty(pfas_uncertainty, logger):
     """
     Using k-means to classify the uncertainty into classes based on the elbow method, using the following features:
@@ -96,7 +90,7 @@ def classify_uncertainty(pfas_uncertainty, logger):
     """
 
     # Extract features for clustering
-    X = pfas_uncertainty[['pred_sum_PFAS_mean', 'pred_sum_PFAS_std', 'pred_sum_PFAS_5th', 'pred_sum_PFAS_95th']].values
+    X = pfas_uncertainty[['pred_sum_PFAS_mean', 'pred_sum_PFAS_std']].values
 
     # Determine the optimal number of clusters using the elbow method
     wcss = []
@@ -115,7 +109,7 @@ def classify_uncertainty(pfas_uncertainty, logger):
     plt.show()
 
     # Choose the optimal number of clusters (based on visual inspection of the elbow plot)
-    optimal_clusters = 3  # Set this based on where the "elbow" occurs
+    optimal_clusters = 5  # Set this based on where the "elbow" occurs
 
     # Perform K-Means clustering with the optimal number of clusters
     kmeans = KMeans(n_clusters=optimal_clusters, random_state=0).fit(X)
@@ -129,16 +123,20 @@ def classify_uncertainty(pfas_uncertainty, logger):
     # Log the unique probabilities
     logger.info(f"Unique probabilities for each class: {unique_probabilities}")
 
-    # Assign colors to clusters
-    cluster_colors = {i: plt.cm.tab10(i) for i in range(optimal_clusters)}
+    # Assign colors to clusters using the spectral colormap
+    cmap = plt.cm.get_cmap('viridis', optimal_clusters)
+    cluster_colors = {i: cmap(i) for i in range(optimal_clusters)}
 
-    # Calculate the range of sum_PFAS for each cluster
+    # Calculate the range of sum_PFAS for each cluster and sort by range
     cluster_ranges = {}
     for i in range(optimal_clusters):
         cluster_data = pfas_uncertainty[pfas_uncertainty['uncertainty_class'] == i]
         min_val = int(cluster_data['pred_sum_PFAS_mean'].min())
         max_val = int(cluster_data['pred_sum_PFAS_mean'].max())
-        cluster_ranges[i] = f"{min_val}-{max_val}"
+        cluster_ranges[i] = (min_val, max_val)
+
+    # Sort clusters by the range
+    sorted_clusters = sorted(cluster_ranges.items(), key=lambda x: x[1])
 
     # Update color labels with sum_PFAS range
     pfas_uncertainty['color'] = pfas_uncertainty['uncertainty_class'].map(cluster_colors)
@@ -147,10 +145,12 @@ def classify_uncertainty(pfas_uncertainty, logger):
     fig, ax = plt.subplots(figsize=(8, 8))
     bounds = pd.read_pickle("/data/MyDataBase/HuronRiverPFAS/Huron_River_basin_bound.pkl").to_crs("EPSG:4326")
     bounds.plot(facecolor='none', edgecolor='black', linewidth=1, alpha=0.5, ax=ax)
+    ## sort by color
+    pfas_uncertainty = pfas_uncertainty.sort_values(by='color')
     pfas_uncertainty.to_crs("EPSG:4326").plot(ax=ax, color=pfas_uncertainty['color'], alpha=0.5)
 
     # Create a legend with custom patches
-    legend_patches = [Patch(color=color, label=f'Range: {cluster_ranges[i]}') for i, color in cluster_colors.items()]
+    legend_patches = [Patch(color=cluster_colors[i], label=f'Σ(PFAS) [{r[0]}-{r[1]}]') for i, r in sorted_clusters]
     ax.legend(handles=legend_patches, title="Uncertainty Clusters")
     plt.grid(axis='both', linestyle='--', alpha=0.5)
     plt.xlabel('Longitude')
