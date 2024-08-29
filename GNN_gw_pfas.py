@@ -31,7 +31,7 @@ def single_experiment_execution():
     out_channels_options = 16
     weight_decay_options = 0.001
     distance_options = 5000
-    gw_gw_distance_threshold = 2000
+    gw_gw_distance_threshold = 250
     #"geomorphons_250m_250Dis",  "LC22_EVH_220_250m", "MI_geol_poly_250m"
 
     gw_features_options = ['DEM_250m','kriging_output_SWL_250m',
@@ -173,7 +173,7 @@ def train(model, data, optimizer, criterion, scheduler, device, logger, epochs=1
         sw_loss = criterion(out['sw_stations'][data['sw_stations'].train_mask], sw_train_target)
         
         
-        loss = gw_loss   #+ 1 * sw_loss 
+        loss = gw_loss   + 0.001 * sw_loss 
 
         loss.backward()
 
@@ -189,7 +189,7 @@ def train(model, data, optimizer, criterion, scheduler, device, logger, epochs=1
             gw_val_loss = criterion(out['gw_wells'][data['gw_wells'].val_mask], gw_val_target)
             sw_val_loss = criterion(out['sw_stations'][data['sw_stations'].val_mask], sw_val_target)
 
-            val_loss = gw_val_loss  # + 1 * sw_val_loss
+            val_loss = gw_val_loss   + 0.001 * sw_val_loss
             val_losses.append(val_loss.item())
 
         model.train()
@@ -262,6 +262,7 @@ def train_and_evaluate(device, data, pfas_gw,pfas_sw, in_channels_dict, edge_att
     assert 'gw_wells' in in_channels_dict.keys(), "gw_wells is missing in in_channels_dict"
     assert 'pfas_sites' in in_channels_dict.keys(), "pfas_sites is missing in in_channels_dict"
     assert 'sw_stations' in in_channels_dict.keys(), "sw_stations is missing in in_channels_dict"
+    assert 'rivs' in in_channels_dict.keys(), "rivs is missing in in_channels_dict"
     
     ## assert sw_stations in data 
     assert "gw_wells" in data.x_dict.keys(), "gw_wells is missing in data"
@@ -285,8 +286,8 @@ def train_and_evaluate(device, data, pfas_gw,pfas_sw, in_channels_dict, edge_att
         logger.error(f"Error: {e}")
         gw_train_loss, gw_val_loss, gw_test_loss = None, None, None
         sw_train_loss, sw_val_loss, sw_test_loss = None, None, None
-        logger.info(f"Train loss: {sw_train_loss}, Validation loss: {sw_val_loss}, Test loss: {sw_test_loss}")
-        logger.info(f"Train loss: {gw_train_loss}, Validation loss: {gw_val_loss}, Test loss: {gw_test_loss}")
+        logger.info(f"SW-Train loss: {sw_train_loss}, SW-Validation loss: {sw_val_loss}, SW-Test loss: {sw_test_loss}")
+        logger.info(f"GW-Train loss: {gw_train_loss}, GW-Validation loss: {gw_val_loss}, GW-Test loss: {gw_test_loss}")
 
     return (gw_train_loss, gw_val_loss, gw_test_loss, sw_train_loss, sw_val_loss, sw_test_loss)
 
@@ -300,7 +301,8 @@ def generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, dis
     in_channels_dict = {
         'pfas_sites': len(args['gw_features']) + 2,
         'gw_wells': len(args['gw_features']) + 2,
-        'sw_stations': len(args['gw_features']) + 2
+        'sw_stations': len(args['gw_features']) + 2,
+        'rivs': 3,
     }
     data, pfas_gw, pfas_sw = load_dataset(args, device, logger)
     edge_attr_dict = data.edge_attr_dict
@@ -310,6 +312,49 @@ def generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, dis
         print(f"#################### {data} ####################")
         print("=========================================")
     time.sleep(1)
+
+    def check_edge_index_consistency(data, source_node_type, target_node_type, edge_type):
+        edge_index = data[source_node_type, edge_type, target_node_type].edge_index
+        num_source_nodes = data[source_node_type].x.size(0)
+        num_target_nodes = data[target_node_type].x.size(0)
+
+        assert edge_index[0].max().item() < num_source_nodes, f"Source index out of range in edge {edge_type} from {source_node_type} to {target_node_type}"
+        assert edge_index[1].max().item() < num_target_nodes, f"Target index out of range in edge {edge_type} from {source_node_type} to {target_node_type}"
+        print(f"Edge indices between {source_node_type} and {target_node_type} are within valid range.")
+
+    # Example for each edge type:
+    check_edge_index_consistency(data, 'pfas_sites', 'gw_wells', 'dis_edge')
+    check_edge_index_consistency(data, 'gw_wells', 'pfas_sites', 'dis_edge')
+    check_edge_index_consistency(data, 'pfas_sites', 'sw_stations', 'dis_edge')
+    check_edge_index_consistency(data, 'sw_stations', 'pfas_sites', 'dis_edge')
+    check_edge_index_consistency(data, 'sw_stations', 'gw_wells', 'dis_edge')
+    check_edge_index_consistency(data, 'gw_wells', 'sw_stations', 'dis_edge')
+    check_edge_index_consistency(data, 'gw_wells', 'gw_wells', 'dis_edge')
+    check_edge_index_consistency(data, 'pfas_sites', 'pfas_sites', 'self_loop')
+    check_edge_index_consistency(data, 'gw_wells', 'gw_wells', 'self_loop')
+    check_edge_index_consistency(data, 'sw_stations', 'sw_stations', 'self_loop')
+    check_edge_index_consistency(data, 'rivs', 'rivs', 'dis_edge')   ### we have not implemented rivs yet
+
+
+    def check_edge_attr_consistency(data, source_node_type, target_node_type, edge_type):
+        edge_index = data[source_node_type, edge_type, target_node_type].edge_index
+        edge_attr = data[source_node_type, edge_type, target_node_type].edge_attr
+
+        assert edge_index.size(1) == edge_attr.size(0), f"Number of edges and edge attributes mismatch for {edge_type} from {source_node_type} to {target_node_type}"
+        print(f"Edge attributes between {source_node_type} and {target_node_type} are consistent with edge indices.")
+
+    # Example for each edge type:
+    check_edge_attr_consistency(data, 'pfas_sites', 'gw_wells', 'dis_edge')
+    check_edge_attr_consistency(data, 'gw_wells', 'pfas_sites', 'dis_edge')
+    check_edge_attr_consistency(data, 'pfas_sites', 'sw_stations', 'dis_edge')
+    check_edge_attr_consistency(data, 'sw_stations', 'pfas_sites', 'dis_edge')
+    check_edge_attr_consistency(data, 'sw_stations', 'gw_wells', 'dis_edge')
+    check_edge_attr_consistency(data, 'gw_wells', 'sw_stations', 'dis_edge')
+    check_edge_attr_consistency(data, 'gw_wells', 'gw_wells', 'dis_edge')
+    check_edge_attr_consistency(data, 'rivs', 'rivs', 'dis_edge')
+
+
+
 
     ### print first column of pfas_sites node features
     print(f"First column of pfas_sites node features: {data['pfas_sites'].x[:, 0]}")
@@ -377,7 +422,6 @@ def parallel_experiments_execution(all_combinations, max_workers=25):
 def save_results(all_dataframes):
     all_dataframes = pd.concat(all_dataframes)
     all_dataframes.to_csv('results/GridSearchResults.csv', index=False)
-   
     all_dataframes = all_dataframes.sort_values(by=['test_loss','val_loss',  'train_loss'], ascending=True)
     all_dataframes = all_dataframes.reset_index()
     all_dataframes = all_dataframes.groupby('gnn_model').first().drop(columns=['index'])
@@ -390,7 +434,9 @@ def save_results(all_dataframes):
 
 
 def experiment(out_channels, epochs, lr, weight_decay, distance_options,gw_gw_distance_threshold, gw_features, gnn_model, aggregation, process_index, single_none_parallel_run=True, device=None):
+
     logger = setup_logging()
+
     args = {
         "repeated_k_fold": 10,
         "verbose": single_none_parallel_run,
@@ -399,15 +445,13 @@ def experiment(out_channels, epochs, lr, weight_decay, distance_options,gw_gw_di
         "pfas_gw_columns": ['sum_PFAS'],
         "pfas_sites_columns": ['inv_status'],
         "pfas_sw_station_columns": ['sum_PFAS'],
+        "riv_columns": ['sum_PFAS'],
         "gw_features": gw_features,
         "distance_threshold": distance_options,
         'gnn_model': gnn_model,
         'aggregation': aggregation, 
         "gw_gw_distance_threshold": gw_gw_distance_threshold,
-
     }
-
-
 
     best_losse = generate_data_train_and_evaluate(out_channels, epochs, lr, weight_decay, distance_options, args, logger, single_none_parallel_run, process_index, device)
     #print(f"Best losses: {best_losse}")
@@ -417,6 +461,7 @@ def experiment(out_channels, epochs, lr, weight_decay, distance_options,gw_gw_di
     
     # Create DataFrame with correct columns
     df = pd.DataFrame(best_losse, columns=['train_loss', 'val_loss', 'test_loss', 'sw_train_loss', 'sw_val_loss', 'sw_test_loss'])
+    
     ## drop None before calculating the median
     df = df.dropna()
     df = df.median()

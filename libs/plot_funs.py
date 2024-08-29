@@ -401,6 +401,13 @@ def plot_predictions(train_target, train_pred, val_target, val_pred, test_target
     plt.close()
 
 
+def plot_rivers(rivs, logger):
+    rivs.plot()
+    plt.xlabel('Longitude')
+    plt.ylabel('Latitude')
+    plt.title('Huron River Basin Rivers')
+    plt.savefig('figs/sw_rivers.png',dpi=300)
+    plt.close()
 def plot_histogram(all_dataframes):
     plt.figure()
     all_dataframes['train_loss'].plot.hist(alpha=0.5, bins=50, label='train_loss')

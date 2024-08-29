@@ -25,58 +25,53 @@ def setup_logging(path='GNN_gw_pfas.txt', verbose=True):
 
     # If the logger already has handlers, skip adding them again
     if not logger.hasHandlers():
-        if verbose:
-            logger.setLevel(logging.INFO)
-        else:
-            logger.setLevel(logging.ERROR)
-
-        # Create file handler which logs even debug messages
-        fh = logging.FileHandler(path)
-        fh.setLevel(logging.INFO if verbose else logging.ERROR)
-
-        # Create console handler with a higher log level
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.INFO if verbose else logging.ERROR)
-
-        # Create formatter without timestamp and root
-        formatter = logging.Formatter('%(levelname)s - %(message)s')
-        fh.setFormatter(formatter)
-        ch.setFormatter(formatter)
-
-        # Add the handlers to the logger
-        logger.addHandler(fh)
-        logger.addHandler(ch)
-
-        # Define error logger
-        error_logger = logging.getLogger('error')
-        error_logger.setLevel(logging.ERROR)
-        error_logger.addHandler(fh)
-        error_logger.addHandler(ch)
-    
+        setup_logging_handlers(verbose, logger, path)
     return logger
+
+def setup_logging_handlers(verbose, logger, path):
+    if verbose:
+        logger.setLevel(logging.INFO)
+    else:
+        logger.setLevel(logging.ERROR)
+
+    # Create file handler which logs even debug messages
+    fh = logging.FileHandler(path)
+    fh.setLevel(logging.INFO if verbose else logging.ERROR)
+
+    # Create console handler with a higher log level
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO if verbose else logging.ERROR)
+
+    # Create formatter without timestamp and root
+    formatter = logging.Formatter('%(levelname)s - %(message)s')
+    fh.setFormatter(formatter)
+    ch.setFormatter(formatter)
+
+    # Add the handlers to the logger
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+
+    # Define error logger
+    error_logger = logging.getLogger('error')
+    error_logger.setLevel(logging.ERROR)
+    error_logger.addHandler(fh)
+    error_logger.addHandler(ch)
 
 
 def get_features_string(gw_features):
     for feature in gw_features:
-
-        if "kriging" in feature:
-            geological_feature = True
-        else:
-            geological_feature = False
-
+        geological_feature = "kriging" in feature
     if "DEM_250m" in gw_features and "kriging_output_SWL_250m" in gw_features and not geological_feature:
         return "SWL_DEM"
     elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" not in gw_features and not geological_feature:
         return "DEM"
     elif "DEM_250m" not in gw_features and "kriging_output_SWL_250m" in gw_features and not geological_feature:
         return "SWL"
-    elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" in gw_features and not geological_feature:
-        return "SWL_DEM"
-    elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" in gw_features and geological_feature:
+    elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" in gw_features:
         return "SWL_DEM_lithological"
-    elif "DEM_250m" in gw_features and "kriging_output_SWL_250m" not in gw_features and geological_feature:
+    elif "DEM_250m" in gw_features:
         return "DEM_lithological"
-    elif "DEM_250m" not in gw_features and "kriging_output_SWL_250m" in gw_features and geological_feature:
+    elif "kriging_output_SWL_250m" in gw_features:
         return "SWL_lithological"
     
 
