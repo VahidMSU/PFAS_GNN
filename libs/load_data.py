@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
-from libs.plot_funs import plot_distribution, plot_site_samples
+from libs.plot_funs import plot_distribution, plot_site_samples, plot_rivers    
 import time
 from libs.hetero_data_creation import create_hetdata
 from libs.utils import get_features_string
@@ -88,6 +88,21 @@ def load_all_wssn(data_dir, gw_features, logger):
     all_wssn = all_wssn.drop_duplicates(subset='WSSN')
     return all_wssn
 
+def load_grids(data_dir, gw_features, logger):
+
+    all_wssn = pd.read_pickle(os.path.join(data_dir, "Huron_River_Grid_250m_with_features.pkl")).to_crs("EPSG:26990").reset_index(drop=True)[['geometry']+gw_features]
+    all_wssn = all_wssn.reset_index(drop=True)[['geometry']+gw_features]
+    all_wssn['WSSN'] = pd.factorize(all_wssn.index)[0]
+    all_wssn['WSSN'] = all_wssn['WSSN'].astype(int).astype(str)
+    logger.info(f"stage:load_all_wssn ==##== Number of all_wssn: {len(all_wssn)}")
+    logger.info(f"stage:load_all_wssn ==##== Range of all_wssn with unique WSSN ID: {all_wssn['WSSN'].nunique()}")
+    ## drop duplicates
+    all_wssn['WSSN'] = pd.factorize(all_wssn['WSSN'])[0]
+    all_wssn = all_wssn.drop_duplicates(subset='WSSN')
+
+
+    return all_wssn
+
 
 
 def load_pfas_gw(data_dir, gw_features, logger):
@@ -97,7 +112,7 @@ def load_pfas_gw(data_dir, gw_features, logger):
     pfas_gw['sampled'] = 1
 
     wssn_gw = load_all_wssn(data_dir,gw_features, logger)
-
+    #wssn_gw = load_grids(data_dir,gw_features, logger)
     wssn_gw['sampled'] = 0
 
     logger.info(f"stage:load_pfas_gw ==##== Number of sampled gw: {len(pfas_gw[pfas_gw['sampled'] == 1])}")
@@ -162,8 +177,6 @@ def add_unconfirmed_sites(data_dir, logger):
         geometry='geometry',
         crs='EPSG:4326'
     ).to_crs("EPSG:26990").reset_index(drop=True)
-
-
 
     unconfirmed_pfas_sites['inv_status'] = 0
 
@@ -291,6 +304,32 @@ def identify_zero_points(pfas_gw, logger):
     return excluded_zeros
 
 
+
+def load_rivers(logger):
+    import geopandas as gpd
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    path = "/data/MyDataBase/CIWRE-BAE/SWAT_input/huc8/4100013/SWAT_MODEL/Watershed/Shapes/rivs1.shp"
+    # Load the shapefile containing river data
+    rivs = gpd.read_file(path)
+    ## replace -1 in ChannelR with a unique value
+    rivs['ChannelR'] = rivs['ChannelR'].replace(-1, -999)
+
+    logger.info(f"stage:create_river_nodes_edges ==##== Number of rows: {rivs.shape[0]}")
+    # Assign node indices based on the unique 'Channel' values
+    rivs['riv_node_index'] = pd.factorize(rivs['Channel'])[0]
+    rivs['sampled'] = 0
+    logger.info(f"stage:create_river_nodes_edges ==##== Number of unique Channel values: {rivs['Channel'].nunique()}")
+    logger.info(f"stage:create_river_nodes_edges ==##== Number of unique riv_node_index values: {rivs['riv_node_index'].nunique()}")
+
+    plot_rivers(rivs, logger)
+
+    ## reduce geometry to only centroid
+    rivs['geometry'] = rivs['geometry'].centroid
+    assert "ChannelR" in rivs.columns, "ChannelR is missing in rivs"
+    assert "Channel" in rivs.columns, "Channel is missing in rivs"
+    return rivs
+
 def load_pfas_sw(data_dir,gw_features, logger):
     pfas_sw = gpd.GeoDataFrame(
         pd.read_pickle(os.path.join(data_dir, "Huron_PFAS_SW_Features.pkl")),
@@ -331,7 +370,6 @@ def load_pfas_sw(data_dir,gw_features, logger):
     return pfas_sw
 def load_dataset(args, device, logger):
 
-
     data_dir = args["data_dir"]
     pfas_gw_columns = args["pfas_gw_columns"]
     pfas_sites_columns = args["pfas_sites_columns"]
@@ -346,12 +384,14 @@ def load_dataset(args, device, logger):
     pfas_gw = classify_pfas_gw(pfas_gw, logger)
 
     pfas_sw = load_pfas_sw(data_dir,gw_features, logger)
+    rivs = load_rivers(logger)
     pfas_sw = classify_pfas_sw(pfas_sw, logger)
     pfas_sw = pfas_sw.reset_index(drop=True)
-
+    
     if args.get("plot", False):
         plot_distribution(pfas_gw, logger, name="gw")
         plot_distribution(pfas_sw, logger, name="sw")
+        
 
     train_gw, val_gw, test_gw, unsampled_gw = split_sampled_gw_pfas_data(pfas_gw, logger, name="gw")
     train_sw, val_sw, test_sw = split_sampled_sw_pfas_data(pfas_sw, logger, name="sw")
@@ -361,12 +401,12 @@ def load_dataset(args, device, logger):
         plot_site_samples(train_sw, val_sw, test_sw, pfas_sites, logger, name="sw")
 
     var_names = get_features_string(gw_features)
-    REWRITE = True
+    REWRITE = False
     if REWRITE:
-        data = create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_columns, pfas_sites_columns, pfas_sw_station_columns, gw_features, distance_threshold, logger, gw_gw_distance_threshold)
+        data = create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites,rivs, device, pfas_gw_columns, pfas_sites_columns, pfas_sw_station_columns, gw_features, distance_threshold, logger, gw_gw_distance_threshold)
         torch.save(data, f"Hetero_data/{var_names}_{distance_threshold}_{gw_gw_distance_threshold}.pth")
     elif not os.path.exists(f"Hetero_data/{var_names}_{distance_threshold}_{gw_gw_distance_threshold}.pth"):
-        data = create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_columns, pfas_sites_columns, pfas_sw_station_columns, gw_features, distance_threshold, logger, gw_gw_distance_threshold)
+        data = create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites,rivs, device, pfas_gw_columns, pfas_sites_columns, pfas_sw_station_columns, gw_features, distance_threshold, logger, gw_gw_distance_threshold)
         torch.save(data, f"Hetero_data/{var_names}_{distance_threshold}_{gw_gw_distance_threshold}.pth")
     else:
         data = torch.load(f"Hetero_data/{var_names}_{distance_threshold}_{gw_gw_distance_threshold}.pth")

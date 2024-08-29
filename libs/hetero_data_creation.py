@@ -3,7 +3,7 @@ import torch
 from torch_geometric.data import HeteroData
 import itertools
 import torch
-
+import pandas as pd
 
 
 def calculate_distances_gpu(des_coords, src_coords, device, logger, dtype=torch.float):
@@ -66,7 +66,7 @@ def create_edges_and_distances(des_node, src_node, device, threshold, logger):
 
     return edges, distances, dem_differences, swl_differences
 
-def create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_columns, pfas_sites_columns,pfas_sw_station_columns, gw_features, distance_threshold, logger, gw_gw_distance_threshold):
+def create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, rivs, device, pfas_gw_columns, pfas_sites_columns,pfas_sw_station_columns, gw_features, distance_threshold, logger, gw_gw_distance_threshold):
     
     logger.info(f"stage:create_hetdata ==##== distance_threshold: {distance_threshold}")
     logger.info(f"stage:create_hetdata ==##== Number of pfas_gw: {len(pfas_gw)}")
@@ -77,6 +77,7 @@ def create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_c
     pfas_gw_columns.append('gw_node_index')
     pfas_sites_columns.append('site_node_index')
     pfas_sw_station_columns.append('sw_node_index')
+    rivs_columns = ['riv_node_index', 'ChannelR']
     data = HeteroData()
 
     ### normalize gw_features data in pfas_gw, pfas_sw and pfas_sites based on the entire dataset (pfas_gw, pfas_sw and pfas_sites)
@@ -87,11 +88,11 @@ def create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_c
         pfas_sw[feature] = (pfas_sw[feature] - all_data_mean) / all_data_std
         pfas_sites[feature] = (pfas_sites[feature] - all_data_mean) / all_data_std
 
-
+    ## add node features
     data['sw_stations'].x = torch.tensor(pfas_sw[pfas_sw_station_columns + gw_features].values, dtype=torch.float)
     data['gw_wells'].x = torch.tensor(pfas_gw[pfas_gw_columns + gw_features].values, dtype=torch.float)
     data['pfas_sites'].x = torch.tensor(pfas_sites[pfas_sites_columns + gw_features].values, dtype=torch.float)
-
+    data['rivs'].x = torch.tensor(rivs[rivs_columns].values, dtype=torch.float)
     
 
     pfas_gw = pfas_gw.drop_duplicates(subset='WSSN')  ### NOTE: need to be verified later
@@ -103,7 +104,7 @@ def create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_c
     assert len(pfas_sw['SiteCode'].unique()) == len(pfas_sw), f"There are duplicate SiteCode values in pfas_sw {len(pfas_sw['SiteCode'].unique())} - {len(pfas_sw)}"
 
     
-    data = create_node_edge_main(data, pfas_gw, pfas_sw, pfas_sites, device, distance_threshold, logger, gw_gw_distance_threshold)
+    data = create_node_edge_main(data, pfas_gw, pfas_sw, pfas_sites, rivs, device, distance_threshold, logger, gw_gw_distance_threshold)
 
     data = add_self_loops(data, device)
 
@@ -112,11 +113,45 @@ def create_hetdata(pfas_gw, pfas_sw, unsampled_gw, pfas_sites, device, pfas_gw_c
 
     return data
 
+def create_rivs_edges_and_nodes(rivs, data):
+    # Step 1: Define node features (assuming AreaC, strmOrder, and Len2 are node features)
+    data['rivs'].x = torch.tensor(rivs[['AreaC', 'strmOrder']].values, dtype=torch.float)
+    
+    # Step 2: Create a mapping from Channel (HydroSequence) to riv_node_index
+    channel_to_index = pd.Series(rivs.index, index=rivs['Channel']).to_dict()
+
+    # Step 3: Create edges based on Channel (source) and ChannelR (destination)
+    riv_riv_edges = rivs[['Channel', 'ChannelR']].dropna().values
+    riv_riv_edges = np.array([
+        [channel_to_index[src], channel_to_index[dst]] 
+        for src, dst in riv_riv_edges 
+        if dst in channel_to_index  # Ensure that ChannelR is in the mapping
+    ])
+
+    # Step 4: Convert to torch tensor and ensure it’s contiguous
+    riv_riv_edge_index = torch.tensor(riv_riv_edges.T, dtype=torch.long).contiguous()
+
+    # Step 5: Extract edge attributes correctly
+    # Create edge_attr only for the edges that exist in riv_riv_edge_index
+    edge_attrs = []
+    for src, dst in riv_riv_edges:
+        edge_attrs.append(rivs.loc[src, ['AreaC', 'strmOrder', 'Len2']].values)
+    
+    riv_riv_edge_attr = torch.tensor(edge_attrs, dtype=torch.float)
+
+    # Step 6: Assign edge_index and edge_attr to the HeteroData object
+    data['rivs', 'dis_edge', 'rivs'].edge_index = riv_riv_edge_index
+    data['rivs', 'dis_edge', 'rivs'].edge_attr = riv_riv_edge_attr
+
+    return data
 
 
-def create_node_edge_main(data, pfas_gw, pfas_sw, pfas_sites, device, distance_threshold, logger, gw_gw_distance_threshold):
+def create_node_edge_main(data, pfas_gw, pfas_sw, pfas_sites,rivs, device, distance_threshold, logger, gw_gw_distance_threshold):
 
     """" Create edges and distances between nodes """
+
+    # Step 1: Create a mapping from Channel (HydroSequence) to riv_node_index
+    data = create_rivs_edges_and_nodes(rivs, data)
 
     gw_site_edges, gw_distances, gw_site_dem_differences, gw_site_swl_differences = create_edges_and_distances(pfas_gw, pfas_sites, device, threshold=distance_threshold, logger=logger)
     gw_edge_index = torch.tensor(gw_site_edges, dtype=torch.long).t().contiguous()
@@ -225,25 +260,63 @@ def add_self_loops(data, device):
     return data
 
 
-def create_rivers_nodes_edges():
-    import geopandas as gpd 
+def load_rivers(path, device, logger):
+    import geopandas as gpd
     import pandas as pd
-    path = "/data/MyDataBase/CIWRE-BAE/SWAT_input/huc8/4100013/SWAT_MODEL/Watershed/Shapes/rivs1.shp"
-    sw = gpd.read_file(path)    ##LINKNO, DSLINKNO
-    sw['riv_node_index'] = pd.factorize(sw['LINKNO'])[0]
-    ### define edges by LINKNO and DSLINKNO relationship 
-    
+    import matplotlib.pyplot as plt
+    # Load the shapefile containing river data
+    riv = gpd.read_file(path)
+    ##
+    logger.info(f"stage:create_river_nodes_edges ==##== Number of rows: {riv.shape[0]}")
+    # Assign node indices based on the unique 'Channel' values
+    riv['riv_node_index'] = pd.factorize(riv['Channel'])[0]
+    riv['sampled'] = 0
+    riv.plot()
+    plt.savefig('figs/sw_rivers.png',dpi=300)
+    return riv
+import numpy as np
+import torch
+import pandas as pd
 
-    sw_edges = sw[['LINKNO', 'DSLINKNO']].values
-    sw_edges = np.unique(sw_edges, axis=0)
-    sw_edge_index = torch.tensor(sw_edges.T, dtype=torch.long)
-    ### define edge_attr using relevant columns
-    sw_edge_attr = torch.tensor(sw[['LENGTHKM', 'SLOPE', 'MANNING']].values, dtype=torch.float)
+def create_river_nodes_edges(riv, device, logger):
+    # Create edges based on the 'Channel' (Channel) and 'ChannelR' relationships
+    riv_edges = riv[['riv_node_index', 'ChannelR']].dropna().values
     
+    # Convert ChannelR to riv_node_index to get the destination node index
+    # First, map ChannelR to riv_node_index based on the Channel mapping
+    riv_node_index = pd.Series(riv['riv_node_index'].values, index=riv['Channel']).to_dict()
+    riv_edges = np.array([[src, riv_node_index.get(dst, -1)] for src, dst in riv_edges if dst in riv_node_index])
+
+    # Remove any edges with a -1 index (which indicates no corresponding downstream node was found)
+    riv_edges = riv_edges[riv_edges[:, 1] != -1]
+
+    # Convert edges to PyTorch tensors
+    riv_edge_index = torch.tensor(riv_edges.T, dtype=torch.long, device=device)
     
-    print(sw.columns)  
+    # Define edge attributes using relevant columns 
+    assert "Drop" in riv.columns, "Drop column is not in the riv dataframe"
+    assert "Length" in riv.columns, "Length column is not in the riv dataframe"
+    assert "Subbasin" in riv.columns, "Subbasin column is not in the riv dataframe"
+    
+    # Extract the relevant columns and convert to a NumPy array
+    riv_edge_attr_values = riv[['Drop', 'Length', 'Subbasin']].values
+    
+    # Convert the NumPy array to a PyTorch tensor
+    riv_edge_attr = torch.tensor(riv_edge_attr_values, dtype=torch.float, device=device)
+
+    ### print number of edges and their features
+    logger.info(f"Number of nodes: {riv['riv_node_index'].nunique()}")
+    logger.info(f"Number of edges: {riv_edge_index.shape[1]}")   
+    logger.info(f"Edge attributes: {riv_edge_attr.shape[1]}")
+
+    return riv['riv_node_index'], riv_edge_index, riv_edge_attr
+
 
 if __name__ == "__main__":
-    create_rivers_nodes_edges()
+    from libs.utils import setup_logging
+    path = "/data/MyDataBase/CIWRE-BAE/SWAT_input/huc8/4100013/SWAT_MODEL/Watershed/Shapes/SWAT_plus_streams_modified.shp"
+    logger = setup_logging()
+    sw = load_rivers(path, device='cpu', logger=logger)
+    riv_node_index, riv_edge_index, riv_edge_attr = create_river_nodes_edges(sw, device='cpu', logger=logger)
     
     print("End of the script")
